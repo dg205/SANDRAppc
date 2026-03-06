@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native";
 import { Audio } from "expo-av";
+import * as FileSystem from "expo-file-system";
 
 export default function MicrophoneRecorder({ onPartialText, onFinish }) {
   const [recording, setRecording] = useState(null);
@@ -60,6 +61,7 @@ export default function MicrophoneRecorder({ onPartialText, onFinish }) {
   async function stopRecording() {
     let uri = null;
 
+    // Stop audio recording
     if (recording) {
       await recording.stopAndUnloadAsync();
       uri = recording.getURI();
@@ -67,6 +69,7 @@ export default function MicrophoneRecorder({ onPartialText, onFinish }) {
       setRecording(null);
     }
 
+    // Stop web speech recognition
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
@@ -74,7 +77,7 @@ export default function MicrophoneRecorder({ onPartialText, onFinish }) {
 
     const text = finalTextRef.current || "";
 
-    // Build CSV immediately
+    // Build CSV content
     const words = text
       .replace(/\n/g, " ")
       .split(" ")
@@ -83,11 +86,44 @@ export default function MicrophoneRecorder({ onPartialText, onFinish }) {
 
     const csvContent = ["word", ...words].join("\n");
 
+    // -----------------------------
+    // SAVE FILES (iOS + Android)
+    // -----------------------------
+    let savedAudioPath = null;
+    let savedCsvPath = null;
+
+    if (Platform.OS !== "web") {
+      // Create a folder for your app's recordings
+      const folder = FileSystem.documentDirectory + "recordings/";
+      await FileSystem.makeDirectoryAsync(folder, { intermediates: true });
+
+      // Save audio file
+      if (uri) {
+        const audioFilename = `audio_${Date.now()}.m4a`;
+        savedAudioPath = folder + audioFilename;
+
+        await FileSystem.copyAsync({
+          from: uri,
+          to: savedAudioPath,
+        });
+      }
+
+      // Save CSV file
+      const csvFilename = `transcript_${Date.now()}.csv`;
+      savedCsvPath = folder + csvFilename;
+
+      await FileSystem.writeAsStringAsync(savedCsvPath, csvContent, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+    }
+
+    // Return everything to parent
     if (onFinish) {
       onFinish({
-        audioUri: uri,
+        audioUri: savedAudioPath || uri, // web fallback
         text,
         csv: csvContent,
+        csvUri: savedCsvPath,
       });
     }
   }

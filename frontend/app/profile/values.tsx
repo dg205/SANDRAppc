@@ -3,10 +3,10 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native
 import * as FileSystem from "expo-file-system";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
-import { useProfile } from "../../utils/ProfileContext";
+
 
 export default function Values() {
-  const { updateProfile } = useProfile();
+  const { setProfile } = useProfile();
   const [liveText, setLiveText] = useState("");
   const [recordedText, setRecordedText] = useState("");
   const [audioUri, setAudioUri] = useState<string | null>(null);
@@ -17,6 +17,7 @@ export default function Values() {
     setRecordedText(text);
     setAudioUri(audioUri);
     setCsvText(csv);
+    setProfile({ valuesText: text, valuesAudioUri: audioUri });
 
     if (Platform.OS !== "web") {
       await saveAudioFile(audioUri);
@@ -112,14 +113,7 @@ export default function Values() {
 
         <TouchableOpacity
           style={styles.nextButton}
-          onPress={() => {
-            const vals = recordedText
-              .split(/[,\s]+/)
-              .map((w) => w.trim().toLowerCase())
-              .filter((w) => w.length > 0);
-            updateProfile({ values: vals });
-            router.push("/profile/faith");
-          }}
+          onPress={() => router.push("/profile/finish")}
         >
           <Text style={styles.nextText}>Next →</Text>
         </TouchableOpacity>

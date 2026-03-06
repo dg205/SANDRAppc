@@ -3,10 +3,10 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native
 import * as FileSystem from "expo-file-system";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
-import { useProfile } from "../../utils/ProfileContext";
+//import { useProfile } from "./profileContext";
 
 export default function Hobbies() {
-  const { updateProfile } = useProfile();
+  const { setProfile } = useProfile();
   const [liveText, setLiveText] = useState("");
   const [recordedText, setRecordedText] = useState("");
   const [audioUri, setAudioUri] = useState<string | null>(null);
@@ -17,6 +17,7 @@ export default function Hobbies() {
     setRecordedText(text);
     setAudioUri(audioUri);
     setCsvText(csv);
+    setProfile({ hobbiesText: text, hobbiesAudioUri: audioUri });
 
     if (Platform.OS !== "web") {
       await saveAudioFile(audioUri);
@@ -112,14 +113,7 @@ export default function Hobbies() {
 
         <TouchableOpacity
           style={styles.nextButton}
-          onPress={() => {
-            const interests = recordedText
-              .split(/[,\s]+/)
-              .map((w) => w.trim().toLowerCase())
-              .filter((w) => w.length > 0);
-            updateProfile({ interests });
-            router.push("/profile/values");
-          }}
+          onPress={() => router.push("/profile/values")}
         >
           <Text style={styles.nextText}>Next →</Text>
         </TouchableOpacity>

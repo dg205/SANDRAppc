@@ -3,16 +3,18 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native
 import * as FileSystem from "expo-file-system";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
-import { useProfile } from "../../utils/ProfileContext";
+import { useProfile } from "./profileContext";
 
 export default function Location() {
-  const { updateProfile } = useProfile();
+  const { setProfile } = useProfile();
   const [liveText, setLiveText] = useState("");
   const [recordedText, setRecordedText] = useState("");
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [csvText, setCsvText] = useState("");
 
   const handleFinish = async ({ audioUri, text, csv }) => {
+  // existing state updates...
+    setProfile({ locationText: text, locationAudioUri: audioUri });
     setLiveText("");
     setRecordedText(text);
     setAudioUri(audioUri);
@@ -112,10 +114,7 @@ export default function Location() {
 
         <TouchableOpacity
           style={styles.nextButton}
-          onPress={() => {
-            updateProfile({ location: recordedText.trim() });
-            router.push("/profile/hobbies");
-          }}
+          onPress={() => router.push("/profile/hobbies")}
         >
           <Text style={styles.nextText}>Next →</Text>
         </TouchableOpacity>
