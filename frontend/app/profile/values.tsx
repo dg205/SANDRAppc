@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native
 import * as FileSystem from "expo-file-system";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
+import { useProfile } from "./profileContext";
 
 
 export default function Values() {
