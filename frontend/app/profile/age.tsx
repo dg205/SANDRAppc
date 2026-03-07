@@ -28,7 +28,7 @@ export default function Age() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.question}>Question 1 of 9: Your Age</Text>
+        <Text style={styles.question}>Question 1 of 8: Your Age</Text>
         <Text style={styles.title}>How old are you?</Text>
         <TextInput
           style={styles.input}
