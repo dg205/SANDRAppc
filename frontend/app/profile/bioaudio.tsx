@@ -12,7 +12,7 @@ import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
 import { useProfile } from "./profileContext";
 
-export default function Hobbies() {
+export default function BioAudio() {
   const { setProfile } = useProfile();
   const [liveText, setLiveText] = useState("");
   const [recordedText, setRecordedText] = useState("");
@@ -32,7 +32,7 @@ export default function Hobbies() {
     setRecordedText(text);
     setAudioUri(audioUri);
     setCsvText(csv);
-    setProfile({ hobbiesText: text, hobbiesAudioUri: audioUri });
+    setProfile({ bio: text });
 
     if (Platform.OS !== "web") {
       await saveAudioFile(audioUri);
@@ -51,7 +51,7 @@ export default function Hobbies() {
     const audioDir = FileSystem.documentDirectory + "audio/";
     await FileSystem.makeDirectoryAsync(audioDir, { intermediates: true });
 
-    const fileName = `hobbies_audio_${Date.now()}.m4a`;
+    const fileName = `bio_audio_${Date.now()}.m4a`;
     const dest = audioDir + fileName;
 
     await FileSystem.copyAsync({ from: uri, to: dest });
@@ -61,7 +61,7 @@ export default function Hobbies() {
     const transDir = FileSystem.documentDirectory + "transcriptions/";
     await FileSystem.makeDirectoryAsync(transDir, { intermediates: true });
 
-    const fileName = `hobbies_transcription_${Date.now()}.txt`;
+    const fileName = `bio_transcription_${Date.now()}.txt`;
     const dest = transDir + fileName;
 
     await FileSystem.writeAsStringAsync(dest, text);
@@ -79,7 +79,7 @@ export default function Hobbies() {
 
     const csvContent = ["word", ...words].join("\n");
 
-    const fileName = `hobbies_words_${Date.now()}.csv`;
+    const fileName = `bio_words_${Date.now()}.csv`;
     const dest = csvDir + fileName;
 
     await FileSystem.writeAsStringAsync(dest, csvContent);
@@ -98,7 +98,7 @@ export default function Hobbies() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "hobbies_audio.m4a";
+    a.download = "bio_audio.m4a";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -111,7 +111,7 @@ export default function Hobbies() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "hobbies_words.csv";
+    a.download = "bio_words.csv";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -132,12 +132,12 @@ export default function Hobbies() {
           <View style={styles.progressBarFill} />
         </View>
 
-        <Text style={styles.questionLabel}>Question 3 of 8: Hobbies</Text>
+        <Text style={styles.questionLabel}>Question 5 of 8: Bio</Text>
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-            What do you like to do? Tell us about your hobbies and free time
-            activities.
+            Tell us a little about yourself. Share your personality, background,
+            and anything you&apos;d like others to know about you.
           </Text>
 
           <View style={styles.recorderWrap}>
@@ -167,7 +167,7 @@ export default function Hobbies() {
 
             <TouchableOpacity
               style={styles.nextButton}
-              onPress={() => router.push("/profile/values")}
+              onPress={() => router.push("/profile/finish")}
             >
               <Text style={styles.nextButtonText}>Next →</Text>
             </TouchableOpacity>
@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   },
 
   progressBarFill: {
-    width: "37.5%", // Question 3 of 8
+    width: "62.5%", // Question 5 of 8
     height: "100%",
     backgroundColor: "#2F80ED",
     borderRadius: 999,

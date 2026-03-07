@@ -3,10 +3,23 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
 
-export default function MicrophoneRecorder({ onPartialText, onFinish }) {
-  const [recording, setRecording] = useState(null);
-  const [audioUri, setAudioUri] = useState(null);
-  const recognitionRef = useRef(null);
+type MicrophoneRecorderProps = {
+  onPartialText?: (text: string) => void;
+  onFinish?: (data: {
+    audioUri: string | null;
+    text: string;
+    csv: string;
+    csvUri: string | null;
+  }) => void;
+};
+
+export default function MicrophoneRecorder({
+  onPartialText,
+  onFinish,
+}: MicrophoneRecorderProps) {
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [audioUri, setAudioUri] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
   const finalTextRef = useRef("");
 
   async function startRecording() {
@@ -24,10 +37,9 @@ export default function MicrophoneRecorder({ onPartialText, onFinish }) {
 
     setRecording(recording);
 
-    // Web speech recognition
     if (Platform.OS === "web") {
       const SpeechRecognition =
-        window.SpeechRecognition || window.webkitSpeechRecognition;
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
       if (!SpeechRecognition) return;
 
@@ -36,8 +48,9 @@ export default function MicrophoneRecorder({ onPartialText, onFinish }) {
       recognition.continuous = true;
       recognition.lang = "en-US";
 
-      recognition.onresult = (event) => {
+      recognition.onresult = (event: any) => {
         let transcript = "";
+
         for (let i = 0; i < event.results.length; i++) {
           transcript += event.results[i][0].transcript;
         }
@@ -59,9 +72,8 @@ export default function MicrophoneRecorder({ onPartialText, onFinish }) {
   }
 
   async function stopRecording() {
-    let uri = null;
+    let uri: string | null = null;
 
-    // Stop audio recording
     if (recording) {
       await recording.stopAndUnloadAsync();
       uri = recording.getURI();
@@ -69,7 +81,6 @@ export default function MicrophoneRecorder({ onPartialText, onFinish }) {
       setRecording(null);
     }
 
-    // Stop web speech recognition
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
@@ -77,7 +88,6 @@ export default function MicrophoneRecorder({ onPartialText, onFinish }) {
 
     const text = finalTextRef.current || "";
 
-    // Build CSV content
     const words = text
       .replace(/\n/g, " ")
       .split(" ")
@@ -86,18 +96,13 @@ export default function MicrophoneRecorder({ onPartialText, onFinish }) {
 
     const csvContent = ["word", ...words].join("\n");
 
-    // -----------------------------
-    // SAVE FILES (iOS + Android)
-    // -----------------------------
-    let savedAudioPath = null;
-    let savedCsvPath = null;
+    let savedAudioPath: string | null = null;
+    let savedCsvPath: string | null = null;
 
     if (Platform.OS !== "web") {
-      // Create a folder for your app's recordings
       const folder = FileSystem.documentDirectory + "recordings/";
       await FileSystem.makeDirectoryAsync(folder, { intermediates: true });
 
-      // Save audio file
       if (uri) {
         const audioFilename = `audio_${Date.now()}.m4a`;
         savedAudioPath = folder + audioFilename;
@@ -108,7 +113,6 @@ export default function MicrophoneRecorder({ onPartialText, onFinish }) {
         });
       }
 
-      // Save CSV file
       const csvFilename = `transcript_${Date.now()}.csv`;
       savedCsvPath = folder + csvFilename;
 
@@ -117,10 +121,9 @@ export default function MicrophoneRecorder({ onPartialText, onFinish }) {
       });
     }
 
-    // Return everything to parent
     if (onFinish) {
       onFinish({
-        audioUri: savedAudioPath || uri, // web fallback
+        audioUri: savedAudioPath || uri,
         text,
         csv: csvContent,
         csvUri: savedCsvPath,
@@ -131,30 +134,74 @@ export default function MicrophoneRecorder({ onPartialText, onFinish }) {
   return (
     <View style={styles.container}>
       {!recording ? (
-        <TouchableOpacity style={styles.recordButton} onPress={startRecording}>
-          <Text style={styles.recordText}>🎤 Start Recording</Text>
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity style={styles.micButton} onPress={startRecording}>
+            <Text style={styles.micIcon}>🎤</Text>
+          </TouchableOpacity>
+          <Text style={styles.helperText}>Tap to start recording</Text>
+        </>
       ) : (
-        <TouchableOpacity style={styles.stopButton} onPress={stopRecording}>
-          <Text style={styles.stopText}>⏹ Stop</Text>
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity style={styles.stopButton} onPress={stopRecording}>
+            <Text style={styles.stopIcon}>⏹</Text>
+          </TouchableOpacity>
+          <Text style={styles.helperText}>Tap to stop recording</Text>
+        </>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { marginTop: 40, alignItems: "center" },
-  recordButton: {
-    backgroundColor: "#ffb74d",
-    padding: 20,
-    borderRadius: 20,
+  container: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 10,
   },
-  recordText: { fontSize: 18 },
+
+  micButton: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: "#F7A531",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#D98200",
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    marginBottom: 12,
+  },
+
+  micIcon: {
+    fontSize: 42,
+    color: "#FFFFFF",
+  },
+
   stopButton: {
-    backgroundColor: "red",
-    padding: 20,
-    borderRadius: 20,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: "#E74C3C",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#B3392B",
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    marginBottom: 12,
   },
-  stopText: { color: "#fff", fontSize: 18 },
+
+  stopIcon: {
+    fontSize: 38,
+    color: "#FFFFFF",
+  },
+
+  helperText: {
+    fontSize: 16,
+    color: "#2F5BD2",
+    textAlign: "center",
+  },
 });

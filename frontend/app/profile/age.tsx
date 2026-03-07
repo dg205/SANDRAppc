@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image } from "react-native";
 import { router } from "expo-router";
-import { useProfile } from "../../utils/ProfileContext";
+import { useProfile } from "./profileContext";
+
 
 export default function Age() {
   const { updateProfile } = useProfile();
@@ -10,7 +11,7 @@ export default function Age() {
   const handleNext = () => {
     const parsed = parseInt(age, 10);
     if (!isNaN(parsed)) {
-      updateProfile({ age: parsed });
+      setProfile({ age: String(parsed) });
     }
     router.push("/profile/location");
   };

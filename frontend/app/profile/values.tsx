@@ -1,10 +1,17 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+  Image,
+  SafeAreaView,
+} from "react-native";
 import * as FileSystem from "expo-file-system";
-import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
+import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { useProfile } from "./profileContext";
-
 
 export default function Values() {
   const { setProfile } = useProfile();
@@ -13,7 +20,15 @@ export default function Values() {
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [csvText, setCsvText] = useState("");
 
-  const handleFinish = async ({ audioUri, text, csv }) => {
+  const handleFinish = async ({
+    audioUri,
+    text,
+    csv,
+  }: {
+    audioUri: string | null;
+    text: string;
+    csv: string;
+  }) => {
     setLiveText("");
     setRecordedText(text);
     setAudioUri(audioUri);
@@ -26,10 +41,6 @@ export default function Values() {
       await saveCSVFromTranscription(text);
     }
   };
-
-  // ---------------------------
-  // NATIVE FILE SAVING
-  // ---------------------------
 
   const saveAudioFile = async (uri: string | null) => {
     if (!uri) return;
@@ -71,10 +82,6 @@ export default function Values() {
     await FileSystem.writeAsStringAsync(dest, csvContent);
   };
 
-  // ---------------------------
-  // WEB DOWNLOAD HELPERS
-  // ---------------------------
-
   const downloadWebAudio = async () => {
     if (!audioUri) return;
 
@@ -103,105 +110,279 @@ export default function Values() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.title}>Tell us about your values</Text>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.inner}>
+        <Text style={styles.appName}>Sandrapp</Text>
 
-        <MicrophoneRecorder
-          onFinish={handleFinish}
-          onPartialText={(partial) => setLiveText(partial)}
-        />
-
-        <TouchableOpacity
-          style={styles.nextButton}
-          onPress={() => router.push("/profile/finish")}
-        >
-          <Text style={styles.nextText}>Next →</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* TRANSCRIPTION BOX */}
-      <View style={styles.footerBox}>
-        <Text style={styles.footerText}>
-          {liveText ||
-            recordedText ||
-            "Talk for a few minutes. Your recorded text will appear here."}
-        </Text>
-      </View>
-
-      {/* WEB-ONLY DOWNLOAD BUTTONS — SHOW AFTER STOP */}
-      {Platform.OS === "web" && recordedText !== "" && (
-        <View style={{ marginTop: 20, width: "100%", alignItems: "center" }}>
-          {audioUri && (
-            <TouchableOpacity style={styles.webButton} onPress={downloadWebAudio}>
-              <Text style={styles.webButtonText}>⬇️ Download Audio</Text>
-            </TouchableOpacity>
-          )}
-
-          {csvText !== "" && (
-            <TouchableOpacity style={styles.webButton} onPress={downloadWebCSV}>
-              <Text style={styles.webButtonText}>⬇️ Download CSV</Text>
-            </TouchableOpacity>
-          )}
+        <View style={styles.header}>
+          {/* Replace with your real logo path if needed */}
+          {/* <Image source={require("../../assets/images/logo.png")} style={styles.logo} /> */}
+          <Text style={styles.setupTitle}>Let&apos;s Set Up Your Profile</Text>
+          <Text style={styles.setupSubtitle}>
+            We&apos;re excited to help you make new connections
+          </Text>
         </View>
-      )}
-    </View>
+
+        <View style={styles.progressBarBackground}>
+          <View style={styles.progressBarFill} />
+        </View>
+
+        <Text style={styles.questionLabel}>Question 4 of 8: Values</Text>
+
+        <View style={styles.card}>
+          <Text style={styles.prompt}>
+            What values matter most to you? Tell us about the beliefs,
+            principles, and qualities that guide your life.
+          </Text>
+
+          <View style={styles.recorderWrap}>
+            <MicrophoneRecorder
+              onFinish={handleFinish}
+              onPartialText={(partial) => setLiveText(partial)}
+            />
+          </View>
+
+          <Text style={styles.talkHint}>Talk for 3 minutes</Text>
+
+          <View style={styles.transcriptionBox}>
+            <Text style={styles.transcriptionText}>
+              {liveText ||
+                recordedText ||
+                "Tap the microphone to start recording your answer"}
+            </Text>
+          </View>
+
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => router.back()}
+            >
+              <Text style={styles.backButtonText}>← Back</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.nextButton}
+              onPress={() => router.push("/profile/bioaudio")}
+            >
+              <Text style={styles.nextButtonText}>Next →</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.noteBox}>
+          <Text style={styles.noteText}>
+            💡 You can skip any question by pressing &quot;Next&quot;
+          </Text>
+        </View>
+
+        {Platform.OS === "web" && recordedText !== "" && (
+          <View style={styles.webButtonsWrap}>
+            {audioUri && (
+              <TouchableOpacity
+                style={styles.webButton}
+                onPress={downloadWebAudio}
+              >
+                <Text style={styles.webButtonText}>⬇️ Download Audio</Text>
+              </TouchableOpacity>
+            )}
+
+            {csvText !== "" && (
+              <TouchableOpacity
+                style={styles.webButton}
+                onPress={downloadWebCSV}
+              >
+                <Text style={styles.webButtonText}>⬇️ Download CSV</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#E4F0FF",
-    paddingTop: 60,
+    backgroundColor: "#EAF3FF",
+  },
+
+  inner: {
+    flex: 1,
+    paddingTop: 18,
     paddingHorizontal: 20,
     alignItems: "center",
   },
 
-  card: {
-    backgroundColor: "#fff",
+  appName: {
+    alignSelf: "flex-start",
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#2F80ED",
+    marginBottom: 10,
+  },
+
+  header: {
+    alignItems: "center",
+    marginBottom: 18,
+  },
+
+  logo: {
+    width: 64,
+    height: 64,
+    resizeMode: "contain",
+    marginBottom: 8,
+  },
+
+  setupTitle: {
+    fontSize: 24,
+    fontWeight: "600",
+    color: "#2F5BD2",
+    textAlign: "center",
+    marginBottom: 6,
+  },
+
+  setupSubtitle: {
+    fontSize: 15,
+    color: "#3A72D8",
+    textAlign: "center",
+  },
+
+  progressBarBackground: {
     width: "100%",
-    padding: 20,
-    borderRadius: 15,
+    height: 10,
+    backgroundColor: "#DDE3ED",
+    borderRadius: 999,
+    overflow: "hidden",
+    marginBottom: 14,
+  },
+
+  progressBarFill: {
+    width: "50%", // Question 4 of 8
+    height: "100%",
+    backgroundColor: "#2F80ED",
+    borderRadius: 999,
+  },
+
+  questionLabel: {
+    fontSize: 16,
+    color: "#666",
+    marginBottom: 18,
+  },
+
+  card: {
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    paddingVertical: 28,
+    paddingHorizontal: 22,
     alignItems: "center",
     shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
     elevation: 4,
   },
 
-  title: {
+  prompt: {
     fontSize: 22,
-    fontWeight: "600",
-    marginBottom: 20,
+    color: "#333",
     textAlign: "center",
+    lineHeight: 32,
+    marginBottom: 28,
+  },
+
+  recorderWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+
+  talkHint: {
+    fontSize: 20,
+    color: "#2F5BD2",
+    marginBottom: 20,
+  },
+
+  transcriptionBox: {
+    width: "100%",
+    minHeight: 56,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#B7CBF5",
+    backgroundColor: "#F4F8FF",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 26,
+  },
+
+  transcriptionText: {
+    textAlign: "center",
+    color: "#6B7280",
+    fontSize: 15,
+  },
+
+  buttonRow: {
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+
+  backButton: {
+    flex: 1,
+    backgroundColor: "#F5FAFF",
+    borderWidth: 1,
+    borderColor: "#8DB7FF",
+    borderRadius: 10,
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+
+  backButtonText: {
+    fontSize: 18,
+    color: "#222",
+    fontWeight: "500",
   },
 
   nextButton: {
-    marginTop: 25,
-    backgroundColor: "#F2F6FF",
-    paddingVertical: 14,
-    paddingHorizontal: 25,
+    flex: 1,
+    backgroundColor: "#2F80ED",
     borderRadius: 10,
-    borderColor: "#8AB4FF",
-    borderWidth: 1,
+    paddingVertical: 16,
+    alignItems: "center",
+    shadowColor: "#2F80ED",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
   },
 
-  nextText: {
+  nextButtonText: {
     fontSize: 18,
+    color: "#FFFFFF",
+    fontWeight: "600",
   },
 
-  footerBox: {
-    marginTop: 20,
-    backgroundColor: "#D9E8FF",
-    padding: 15,
-    borderRadius: 12,
+  noteBox: {
     width: "100%",
+    backgroundColor: "#E8F1FF",
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    marginTop: 16,
+    alignItems: "center",
   },
 
-  footerText: {
+  noteText: {
+    color: "#6B7280",
+    fontSize: 14,
     textAlign: "center",
-    color: "#333",
+  },
+
+  webButtonsWrap: {
+    marginTop: 20,
+    width: "100%",
+    alignItems: "center",
   },
 
   webButton: {
