@@ -12,7 +12,7 @@ import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
 import { useProfile } from "./profileContext";
 
-export default function BioAudio() {
+export default function MeetingAudio() {
   const { setProfile } = useProfile();
   const [liveText, setLiveText] = useState("");
   const [recordedText, setRecordedText] = useState("");
@@ -32,7 +32,7 @@ export default function BioAudio() {
     setRecordedText(text);
     setAudioUri(audioUri);
     setCsvText(csv);
-    setProfile({ bio: text });
+    setProfile({ meeting: text });
 
     if (Platform.OS !== "web") {
       await saveAudioFile(audioUri);
@@ -51,7 +51,7 @@ export default function BioAudio() {
     const audioDir = FileSystem.documentDirectory + "audio/";
     await FileSystem.makeDirectoryAsync(audioDir, { intermediates: true });
 
-    const fileName = `bio_audio_${Date.now()}.m4a`;
+    const fileName = `meeting_audio_${Date.now()}.m4a`;
     const dest = audioDir + fileName;
 
     await FileSystem.copyAsync({ from: uri, to: dest });
@@ -61,7 +61,7 @@ export default function BioAudio() {
     const transDir = FileSystem.documentDirectory + "transcriptions/";
     await FileSystem.makeDirectoryAsync(transDir, { intermediates: true });
 
-    const fileName = `bio_transcription_${Date.now()}.txt`;
+    const fileName = `meeting_transcription_${Date.now()}.txt`;
     const dest = transDir + fileName;
 
     await FileSystem.writeAsStringAsync(dest, text);
@@ -79,7 +79,7 @@ export default function BioAudio() {
 
     const csvContent = ["word", ...words].join("\n");
 
-    const fileName = `bio_words_${Date.now()}.csv`;
+    const fileName = `meeting_words_${Date.now()}.csv`;
     const dest = csvDir + fileName;
 
     await FileSystem.writeAsStringAsync(dest, csvContent);
@@ -98,7 +98,7 @@ export default function BioAudio() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "bio_audio.m4a";
+    a.download = "meeting_audio.m4a";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -111,7 +111,7 @@ export default function BioAudio() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "bio_words.csv";
+    a.download = "meeting_words.csv";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -132,12 +132,12 @@ export default function BioAudio() {
           <View style={styles.progressBarFill} />
         </View>
 
-        <Text style={styles.questionLabel}>Question 5 of 8: Bio</Text>
+        <Text style={styles.questionLabel}>Question 8 of 8: Who You Want to Meet</Text>
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-            Tell us a little about yourself. Share your personality, background,
-            and anything you&apos;d like others to know about you.
+            Tell us who you want to meet.
+            What kind of people are you hoping to connect with?
           </Text>
 
           <View style={styles.recorderWrap}>
@@ -167,9 +167,9 @@ export default function BioAudio() {
 
             <TouchableOpacity
               style={styles.nextButton}
-              onPress={() => router.push("/profile/GettingHelpAudio")}
+              onPress={() => router.push("/profile/finish")}
             >
-              <Text style={styles.nextButtonText}>Next →</Text>
+              <Text style={styles.nextButtonText}>Finish →</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   },
 
   progressBarFill: {
-    width: "62.5%", // Question 5 of 8
+    width: "100%", // Question 8 of 8
     height: "100%",
     backgroundColor: "#2F80ED",
     borderRadius: 999,
