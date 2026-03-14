@@ -86,7 +86,7 @@ export default function Finish() {
 
       // Pass to home as a param (stringify because params are strings)
       router.push({
-        pathname: "/home",
+        pathname: "/profile/MatchResults",
         params: { matches: JSON.stringify(result.matches ?? []) },
       });
     } catch (err: any) {
