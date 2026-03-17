@@ -6,13 +6,15 @@ import { useProfile } from "./profileContext";
 
 export default function Age() {
   const { updateProfile } = useProfile();
+  const [name, setName] = useState("");
   const [age, setAge] = useState("");
 
   const handleNext = () => {
     const parsed = parseInt(age, 10);
-    if (!isNaN(parsed)) {
-      setProfile({ age: String(parsed) });
-    }
+    updateProfile({
+      name: name.trim(),
+      ...(isNaN(parsed) ? {} : { age: parsed }),
+    });
     router.push("/profile/location");
   };
 
@@ -28,7 +30,14 @@ export default function Age() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.question}>Question 1 of 8: Your Age</Text>
+        <Text style={styles.question}>Question 1 of 8: About You</Text>
+        <Text style={styles.title}>What's your name?</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter your name"
+          value={name}
+          onChangeText={setName}
+        />
         <Text style={styles.title}>How old are you?</Text>
         <TextInput
           style={styles.input}

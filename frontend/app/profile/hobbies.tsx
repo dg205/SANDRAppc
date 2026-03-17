@@ -7,13 +7,13 @@ import {
   Platform,
   SafeAreaView,
 } from "react-native";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
 import { useProfile } from "./profileContext";
 
 export default function Hobbies() {
-  const { setProfile } = useProfile();
+  const { updateProfile } = useProfile();
   const [liveText, setLiveText] = useState("");
   const [recordedText, setRecordedText] = useState("");
   const [audioUri, setAudioUri] = useState<string | null>(null);
@@ -32,7 +32,7 @@ export default function Hobbies() {
     setRecordedText(text);
     setAudioUri(audioUri);
     setCsvText(csv);
-    setProfile({ hobbiesText: text, hobbiesAudioUri: audioUri });
+    updateProfile({ hobbiesText: text, hobbiesAudioUri: audioUri });
 
     if (Platform.OS !== "web") {
       await saveAudioFile(audioUri);

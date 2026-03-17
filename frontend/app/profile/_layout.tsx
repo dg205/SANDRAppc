@@ -1,15 +1,13 @@
 import { Stack } from "expo-router";
-import { ProfileProvider } from "./profileContext";
 
+// ProfileProvider lives in the root _layout.tsx — no nested provider needed here.
 export default function ProfileLayout() {
   return (
-    <ProfileProvider>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          animation: "slide_from_right",
-        }}
-      />
-    </ProfileProvider>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        animation: "slide_from_right",
+      }}
+    />
   );
 }

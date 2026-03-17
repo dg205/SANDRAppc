@@ -8,13 +8,13 @@ import {
   Image,
   SafeAreaView,
 } from "react-native";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { router } from "expo-router";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { useProfile } from "./profileContext";
 
 export default function Values() {
-  const { setProfile } = useProfile();
+  const { updateProfile } = useProfile();
   const [liveText, setLiveText] = useState("");
   const [recordedText, setRecordedText] = useState("");
   const [audioUri, setAudioUri] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export default function Values() {
     setRecordedText(text);
     setAudioUri(audioUri);
     setCsvText(csv);
-    setProfile({ valuesText: text, valuesAudioUri: audioUri });
+    updateProfile({ valuesText: text, valuesAudioUri: audioUri });
 
     if (Platform.OS !== "web") {
       await saveAudioFile(audioUri);

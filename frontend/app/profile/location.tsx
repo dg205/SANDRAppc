@@ -7,13 +7,13 @@ import {
   Platform,
   SafeAreaView,
 } from "react-native";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
 import { useProfile } from "./profileContext";
 
 export default function Location() {
-  const { setProfile } = useProfile();
+  const { updateProfile } = useProfile();
   const [liveText, setLiveText] = useState("");
   const [recordedText, setRecordedText] = useState("");
   const [audioUri, setAudioUri] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export default function Location() {
     text: string;
     csv: string;
   }) => {
-    setProfile({ locationText: text, locationAudioUri: audioUri });
+    updateProfile({ locationText: text, locationAudioUri: audioUri });
     setLiveText("");
     setRecordedText(text);
     setAudioUri(audioUri);
