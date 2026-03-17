@@ -51,6 +51,7 @@ ML_FEATURES = [
 # ---------------------------------------------------------------------------
 
 SENIOR_PROFILES = [
+    # ── Original 8 ──────────────────────────────────────────────────────────
     {"userType":"senior","name":"Maria","age":70,"location":"atlanta","faith":"christian","interests":["music","gardening","cooking"],"languages":["english","spanish"],"culturalBackground":"mexican","values":["family","faith","kindness"],"favoriteFood":["mexican","american"],"helpWith":["rides","groceries","technology help"],"talkPreferences":["phone","in-person"],"connectionGoals":["companionship","friendship"],"familySituation":"widowed","availableDays":["monday","wednesday","friday"]},
     {"userType":"senior","name":"Dorothy","age":68,"location":"atlanta","faith":"baptist","interests":["reading","walking","gardening","music"],"languages":["english"],"culturalBackground":"american","values":["kindness","family","community"],"favoriteFood":["southern","american"],"helpWith":["groceries","rides","errands"],"talkPreferences":["phone","in-person"],"connectionGoals":["companionship","book club"],"familySituation":"widowed","availableDays":["monday","wednesday","friday","saturday"]},
     {"userType":"senior","name":"Harold","age":75,"location":"smyrna","faith":"jewish","interests":["chess","reading","history","cooking"],"languages":["english","yiddish"],"culturalBackground":"eastern european","values":["education","family","community"],"favoriteFood":["jewish deli","mediterranean"],"helpWith":["technology help","groceries","rides"],"talkPreferences":["in-person","phone"],"connectionGoals":["intellectual conversation","companionship"],"familySituation":"widowed","availableDays":["sunday","tuesday","thursday"]},
@@ -59,9 +60,19 @@ SENIOR_PROFILES = [
     {"userType":"senior","name":"Betty","age":71,"location":"atlanta","faith":"baptist","interests":["gospel music","cooking","gardening","church"],"languages":["english"],"culturalBackground":"american","values":["faith","family","generosity"],"favoriteFood":["southern","soul food"],"helpWith":["rides","groceries","technology help"],"talkPreferences":["phone","in-person"],"connectionGoals":["companionship","friendship"],"familySituation":"widowed","availableDays":["monday","tuesday","thursday","saturday"]},
     {"userType":"senior","name":"Grace","age":65,"location":"atlanta","faith":"christian","interests":["painting","music","walking","volunteering"],"languages":["english"],"culturalBackground":"american","values":["creativity","kindness","faith"],"favoriteFood":["american","mediterranean"],"helpWith":["rides","errands","technology help"],"talkPreferences":["in-person","video call"],"connectionGoals":["friendship","activity partner"],"familySituation":"lives alone","availableDays":["monday","wednesday","friday","sunday"]},
     {"userType":"senior","name":"Carlos","age":66,"location":"norcross","faith":"catholic","interests":["soccer","cooking","music","gardening"],"languages":["spanish","english"],"culturalBackground":"colombian","values":["family","faith","hard work"],"favoriteFood":["colombian","latin american"],"helpWith":["errands","technology help","rides"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","activity partner"],"familySituation":"married","availableDays":["saturday","sunday","wednesday"]},
+    # ── New 8 ───────────────────────────────────────────────────────────────
+    {"userType":"senior","name":"Eleanor","age":78,"location":"marietta","faith":"catholic","interests":["knitting","reading","baking","church"],"languages":["english"],"culturalBackground":"irish","values":["family","faith","patience"],"favoriteFood":["irish","american","italian"],"helpWith":["rides","groceries","technology help","errands"],"talkPreferences":["phone","in-person"],"connectionGoals":["companionship","friendship"],"familySituation":"widowed","availableDays":["monday","wednesday","friday","saturday"]},
+    {"userType":"senior","name":"James","age":69,"location":"atlanta","faith":"baptist","interests":["jazz","chess","cooking","walking","history"],"languages":["english"],"culturalBackground":"american","values":["community","education","family","integrity"],"favoriteFood":["soul food","southern","bbq"],"helpWith":["technology help","rides","groceries"],"talkPreferences":["in-person","phone"],"connectionGoals":["intellectual conversation","companionship","friendship"],"familySituation":"widowed","availableDays":["tuesday","thursday","saturday","sunday"]},
+    {"userType":"senior","name":"Sun-Hee","age":67,"location":"norcross","faith":"christian","interests":["cooking","gardening","church","music","sewing"],"languages":["korean","english"],"culturalBackground":"korean","values":["family","respect","hard work","faith"],"favoriteFood":["korean","asian","american"],"helpWith":["technology help","errands","rides"],"talkPreferences":["in-person","phone"],"connectionGoals":["companionship","friendship","cultural exchange"],"familySituation":"married","availableDays":["monday","wednesday","saturday","sunday"]},
+    {"userType":"senior","name":"Frank","age":74,"location":"decatur","faith":"catholic","interests":["cooking","walking","opera","history","bocce"],"languages":["english","italian"],"culturalBackground":"italian","values":["family","generosity","loyalty","faith"],"favoriteFood":["italian","mediterranean","american"],"helpWith":["rides","groceries","yard work","technology help"],"talkPreferences":["in-person","phone"],"connectionGoals":["companionship","activity partner","friendship"],"familySituation":"widowed","availableDays":["tuesday","thursday","saturday","sunday"]},
+    {"userType":"senior","name":"Patricia","age":76,"location":"smyrna","faith":"methodist","interests":["painting","reading","crossword","walking","gardening"],"languages":["english"],"culturalBackground":"american","values":["creativity","kindness","education","community"],"favoriteFood":["american","mediterranean","healthy"],"helpWith":["rides","errands","technology help","groceries"],"talkPreferences":["in-person","video call","phone"],"connectionGoals":["friendship","book club","companionship"],"familySituation":"lives alone","availableDays":["monday","wednesday","friday","sunday"]},
+    {"userType":"senior","name":"Arthur","age":81,"location":"atlanta","faith":"jewish","interests":["reading","theater","chess","history","writing"],"languages":["english","yiddish"],"culturalBackground":"eastern european","values":["education","intellectual curiosity","family","community"],"favoriteFood":["jewish deli","mediterranean","american"],"helpWith":["technology help","rides","groceries","errands"],"talkPreferences":["in-person","phone"],"connectionGoals":["intellectual conversation","companionship","mentorship"],"familySituation":"widowed","availableDays":["sunday","tuesday","thursday","friday"]},
+    {"userType":"senior","name":"Consuelo","age":70,"location":"norcross","faith":"catholic","interests":["cooking","dancing","music","church","gardening"],"languages":["spanish","english"],"culturalBackground":"mexican","values":["family","faith","generosity","community"],"favoriteFood":["mexican","latin american","italian"],"helpWith":["rides","errands","technology help"],"talkPreferences":["in-person","phone"],"connectionGoals":["companionship","friendship","cultural exchange"],"familySituation":"lives with family","availableDays":["monday","friday","saturday","sunday"]},
+    {"userType":"senior","name":"William","age":67,"location":"marietta","faith":"baptist","interests":["fishing","golf","cooking","sports","history"],"languages":["english"],"culturalBackground":"american","values":["loyalty","honesty","family","service"],"favoriteFood":["southern","bbq","seafood","american"],"helpWith":["yard work","errands","rides","groceries"],"talkPreferences":["in-person","phone"],"connectionGoals":["activity partner","companionship","friendship"],"familySituation":"married","availableDays":["tuesday","thursday","saturday","sunday"]},
 ]
 
 COMPANION_PROFILES = [
+    # ── Original 8 ──────────────────────────────────────────────────────────
     {"userType":"companion","name":"Aisha","age":26,"location":"atlanta","faith":"christian","interests":["cooking","music","volunteering","reading"],"languages":["english"],"culturalBackground":"american","values":["kindness","community","faith"],"favoriteFood":["soul food","american"],"helpWith":["rides","groceries","technology help","errands"],"talkPreferences":["in-person","phone"],"connectionGoals":["companionship","friendship","mentorship"],"familySituation":"single","availableDays":["saturday","sunday","wednesday"]},
     {"userType":"companion","name":"Tyler","age":30,"location":"marietta","faith":"christian","interests":["history","cooking","walking","movies"],"languages":["english"],"culturalBackground":"american","values":["loyalty","honesty","community"],"favoriteFood":["bbq","southern","american"],"helpWith":["rides","yard work","errands","groceries"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","companionship","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","tuesday"]},
     {"userType":"companion","name":"Sofia","age":24,"location":"atlanta","faith":"catholic","interests":["music","cooking","gardening","volunteering"],"languages":["spanish","english"],"culturalBackground":"mexican","values":["family","faith","kindness"],"favoriteFood":["mexican","latin american"],"helpWith":["rides","groceries","errands","technology help"],"talkPreferences":["phone","in-person"],"connectionGoals":["companionship","friendship","mentorship"],"familySituation":"single","availableDays":["saturday","sunday","friday"]},
@@ -70,6 +81,15 @@ COMPANION_PROFILES = [
     {"userType":"companion","name":"Diego","age":27,"location":"norcross","faith":"catholic","interests":["soccer","cooking","music","history"],"languages":["spanish","english"],"culturalBackground":"colombian","values":["family","faith","hard work"],"favoriteFood":["colombian","latin american","mexican"],"helpWith":["rides","errands","yard work","groceries"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","companionship","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","wednesday"]},
     {"userType":"companion","name":"Emma","age":22,"location":"smyrna","faith":"jewish","interests":["reading","chess","history","cooking"],"languages":["english","hebrew"],"culturalBackground":"american","values":["education","community","family"],"favoriteFood":["mediterranean","american"],"helpWith":["technology help","groceries","rides","errands"],"talkPreferences":["in-person","phone"],"connectionGoals":["mentorship","friendship","companionship"],"familySituation":"student","availableDays":["saturday","sunday","friday"]},
     {"userType":"companion","name":"Jordan","age":35,"location":"atlanta","faith":"methodist","interests":["walking","fishing","cooking","music"],"languages":["english"],"culturalBackground":"american","values":["honesty","kindness","community"],"favoriteFood":["southern","american","seafood"],"helpWith":["yard work","rides","errands","groceries"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","companionship","activity partner"],"familySituation":"married","availableDays":["saturday","sunday","thursday"]},
+    # ── New 8 ───────────────────────────────────────────────────────────────
+    {"userType":"companion","name":"Rachel","age":25,"location":"atlanta","faith":"christian","interests":["reading","hiking","cooking","volunteering","yoga"],"languages":["english"],"culturalBackground":"american","values":["kindness","service","wellness","community"],"favoriteFood":["healthy","american","mediterranean"],"helpWith":["rides","groceries","errands","technology help","appointments"],"talkPreferences":["in-person","phone","video call"],"connectionGoals":["friendship","companionship","mentorship","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","monday","wednesday"]},
+    {"userType":"companion","name":"Kwame","age":29,"location":"decatur","faith":"baptist","interests":["music","cooking","walking","community","sports"],"languages":["english"],"culturalBackground":"american","values":["community","generosity","family","faith"],"favoriteFood":["soul food","southern","american","caribbean"],"helpWith":["rides","yard work","groceries","errands","technology help"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","companionship","learning from elders","mentorship"],"familySituation":"single","availableDays":["saturday","sunday","tuesday","thursday"]},
+    {"userType":"companion","name":"Mei","age":23,"location":"atlanta","faith":"none","interests":["cooking","reading","art","painting","technology"],"languages":["english","mandarin"],"culturalBackground":"chinese","values":["education","creativity","respect","family"],"favoriteFood":["asian","chinese","healthy","mediterranean"],"helpWith":["technology help","rides","errands","groceries","phone setup"],"talkPreferences":["in-person","video call","phone"],"connectionGoals":["friendship","companionship","cultural exchange","mentorship"],"familySituation":"student","availableDays":["saturday","sunday","friday","monday"]},
+    {"userType":"companion","name":"Patrick","age":33,"location":"marietta","faith":"catholic","interests":["hiking","cooking","history","music","reading"],"languages":["english"],"culturalBackground":"irish","values":["loyalty","family","community","honesty"],"favoriteFood":["irish","american","bbq","italian"],"helpWith":["rides","yard work","errands","groceries","technology help"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","companionship","learning from elders","activity partner"],"familySituation":"single","availableDays":["saturday","sunday","tuesday","thursday"]},
+    {"userType":"companion","name":"Fatima","age":27,"location":"atlanta","faith":"muslim","interests":["reading","cooking","volunteering","art","walking"],"languages":["english","arabic"],"culturalBackground":"middle eastern","values":["faith","family","compassion","education","service"],"favoriteFood":["middle eastern","mediterranean","healthy","american"],"helpWith":["rides","groceries","errands","technology help","company"],"talkPreferences":["in-person","phone","video call"],"connectionGoals":["friendship","companionship","mentorship","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","wednesday","friday"]},
+    {"userType":"companion","name":"Alex","age":26,"location":"smyrna","faith":"christian","interests":["technology","walking","cooking","movies","gaming"],"languages":["english"],"culturalBackground":"american","values":["kindness","patience","community","honesty"],"favoriteFood":["american","asian","bbq"],"helpWith":["technology help","rides","phone setup","computer help","errands","groceries"],"talkPreferences":["in-person","video call","phone"],"connectionGoals":["friendship","companionship","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","monday","thursday"]},
+    {"userType":"companion","name":"Lucia","age":30,"location":"norcross","faith":"catholic","interests":["dancing","cooking","music","gardening","volunteering"],"languages":["spanish","english"],"culturalBackground":"colombian","values":["family","faith","joy","community","generosity"],"favoriteFood":["colombian","latin american","mexican","italian"],"helpWith":["rides","errands","groceries","cooking","technology help"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","companionship","cultural exchange","mentorship"],"familySituation":"single","availableDays":["saturday","sunday","wednesday","friday"]},
+    {"userType":"companion","name":"Daniel","age":24,"location":"atlanta","faith":"jewish","interests":["chess","reading","history","cooking","theater"],"languages":["english","hebrew"],"culturalBackground":"american","values":["education","community","family","intellectual curiosity"],"favoriteFood":["jewish deli","mediterranean","american"],"helpWith":["technology help","rides","errands","groceries","company"],"talkPreferences":["in-person","phone"],"connectionGoals":["mentorship","friendship","intellectual conversation","companionship"],"familySituation":"student","availableDays":["saturday","sunday","tuesday","friday"]},
 ]
 
 SEED_CANDIDATES = SENIOR_PROFILES + COMPANION_PROFILES
@@ -119,12 +139,50 @@ def get_candidates_by_type(user_type):
 # Nearby cities
 # ---------------------------------------------------------------------------
 NEARBY_CITIES = {
+    # Atlanta metro cluster — all within ~30 miles of each other
     frozenset({"atlanta", "marietta"}),
     frozenset({"atlanta", "decatur"}),
     frozenset({"atlanta", "smyrna"}),
     frozenset({"atlanta", "norcross"}),
+    frozenset({"atlanta", "kennesaw"}),
+    frozenset({"atlanta", "sandy springs"}),
+    frozenset({"atlanta", "roswell"}),
     frozenset({"marietta", "smyrna"}),
+    frozenset({"marietta", "kennesaw"}),
+    frozenset({"marietta", "roswell"}),
     frozenset({"decatur", "norcross"}),
+    frozenset({"smyrna", "kennesaw"}),
+    frozenset({"norcross", "roswell"}),
+    frozenset({"norcross", "sandy springs"}),
+    # Phoenix metro cluster
+    frozenset({"phoenix", "tempe"}),
+    frozenset({"phoenix", "scottsdale"}),
+    frozenset({"phoenix", "mesa"}),
+    frozenset({"phoenix", "chandler"}),
+    frozenset({"tempe", "scottsdale"}),
+    frozenset({"tempe", "mesa"}),
+    frozenset({"scottsdale", "mesa"}),
+    # Chicago metro
+    frozenset({"chicago", "evanston"}),
+    frozenset({"chicago", "oak park"}),
+    frozenset({"chicago", "naperville"}),
+    # Dallas / Fort Worth metro
+    frozenset({"dallas", "fort worth"}),
+    frozenset({"dallas", "plano"}),
+    frozenset({"dallas", "irving"}),
+    # Houston metro
+    frozenset({"houston", "sugar land"}),
+    frozenset({"houston", "pasadena"}),
+    # Miami metro
+    frozenset({"miami", "miami beach"}),
+    frozenset({"miami", "coral gables"}),
+    frozenset({"miami", "hialeah"}),
+    # NYC metro
+    frozenset({"brooklyn", "queens"}),
+    frozenset({"brooklyn", "manhattan"}),
+    frozenset({"queens", "manhattan"}),
+    frozenset({"bronx", "manhattan"}),
+    frozenset({"bronx", "queens"}),
 }
 
 CHRISTIAN_TRADITIONS = {
