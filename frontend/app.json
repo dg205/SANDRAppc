@@ -27,7 +27,12 @@
     },
     "plugins": [
       "expo-router",
-      "expo-maps"
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone to record your voice for profile setup."
+        }
+      ]
     ]
   }
 }

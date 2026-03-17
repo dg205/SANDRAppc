@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert } from "react-native";
 import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 
 type MicrophoneRecorderProps = {
   onPartialText?: (text: string) => void;
@@ -20,22 +20,31 @@ export default function MicrophoneRecorder({
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
-  const finalTextRef = useRef("");
+  const finalTextRef   = useRef("");   // set only when Chrome fires isFinal=true
+  const latestTextRef  = useRef("");   // updated on EVERY result (interim + final)
 
   async function startRecording() {
-    const permission = await Audio.requestPermissionsAsync();
-    if (!permission.granted) return;
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission Required", "Microphone access is needed to record your voice.");
+        return;
+      }
 
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
-    });
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
 
-    const { recording } = await Audio.Recording.createAsync(
-      Audio.RecordingOptionsPresets.HIGH_QUALITY
-    );
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
 
-    setRecording(recording);
+      setRecording(recording);
+    } catch (err) {
+      Alert.alert("Recording Error", String(err));
+      return;
+    }
 
     if (Platform.OS === "web") {
       const SpeechRecognition =
@@ -55,14 +64,27 @@ export default function MicrophoneRecorder({
           transcript += event.results[i][0].transcript;
         }
 
+        // Always keep the most recent transcript, whether interim or final.
+        // This is the fallback used if Chrome never fires isFinal=true
+        // (e.g. when the user speaks continuously and hits stop immediately).
+        latestTextRef.current = transcript;
+
         const isFinal = event.results[event.results.length - 1].isFinal;
 
-        if (!isFinal && onPartialText) {
+        // Show live partial text while speaking
+        if (onPartialText) {
           onPartialText(transcript);
         }
 
         if (isFinal) {
           finalTextRef.current = transcript;
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        // Silently ignore "no-speech" — it's not a real error
+        if (event.error !== "no-speech") {
+          console.warn("SpeechRecognition error:", event.error);
         }
       };
 
@@ -86,7 +108,14 @@ export default function MicrophoneRecorder({
       recognitionRef.current = null;
     }
 
-    const text = finalTextRef.current || "";
+    // Prefer a confirmed-final transcript; fall back to the last interim one.
+    // Chrome often never fires isFinal=true if the user speaks without pausing,
+    // so latestTextRef gives us the text that was visible in the live box.
+    const text = finalTextRef.current || latestTextRef.current || "";
+
+    // Reset refs for next recording session
+    finalTextRef.current  = "";
+    latestTextRef.current = "";
 
     const words = text
       .replace(/\n/g, " ")

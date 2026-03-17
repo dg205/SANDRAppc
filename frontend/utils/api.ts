@@ -1,4 +1,5 @@
-export const BASE_URL = "http://192.168.1.74:5000";
+export const BASE_URL =
+  (process.env.EXPO_PUBLIC_API_BASE?.trim()) ?? "http://127.0.0.1:5000";
 
 export async function checkHealth(): Promise<{ status: string }> {
   const res = await fetch(`${BASE_URL}/health`);
