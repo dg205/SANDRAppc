@@ -25,13 +25,13 @@ export default function RegistrationType() {
 
         <TouchableOpacity style={styles.typeCard} onPress={() => handleSelect("senior")}>
           <Text style={styles.emoji}>🧓</Text>
-          <Text style={styles.typeTitle}>I'm a Senior (65+)</Text>
+          <Text style={styles.typeTitle}>I'm an older adult</Text>
           <Text style={styles.typeDesc}>Looking for a young companion for friendship & support</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.typeCard} onPress={() => handleSelect("companion")}>
           <Text style={styles.emoji}>🙋</Text>
-          <Text style={styles.typeTitle}>I'm a Young Companion (18–45)</Text>
+          <Text style={styles.typeTitle}>I'm a Younger Companion</Text>
           <Text style={styles.typeDesc}>Looking to connect with and support an older adult</Text>
         </TouchableOpacity>
 
