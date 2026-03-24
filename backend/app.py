@@ -5,11 +5,27 @@ import json
 import os
 import pickle
 import re
+import tempfile
+import base64
 import numpy as np
 import pandas as pd
 
 app = Flask(__name__)
 CORS(app)
+
+# ---------------------------------------------------------------------------
+# Whisper model (lazy-loaded on first transcription request)
+# ---------------------------------------------------------------------------
+WHISPER_MODEL = None
+
+def get_whisper_model():
+    global WHISPER_MODEL
+    if WHISPER_MODEL is None:
+        import whisper
+        print("Loading Whisper model (first time only)...")
+        WHISPER_MODEL = whisper.load_model("base")
+        print("Whisper model ready.")
+    return WHISPER_MODEL
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "candidates.db")
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "trained_model.pkl")
@@ -81,15 +97,21 @@ COMPANION_PROFILES = [
     {"userType":"companion","name":"Diego","age":27,"location":"norcross","faith":"catholic","interests":["soccer","cooking","music","history"],"languages":["spanish","english"],"culturalBackground":"colombian","values":["family","faith","hard work"],"favoriteFood":["colombian","latin american","mexican"],"helpWith":["rides","errands","yard work","groceries"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","companionship","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","wednesday"]},
     {"userType":"companion","name":"Emma","age":22,"location":"smyrna","faith":"jewish","interests":["reading","chess","history","cooking"],"languages":["english","hebrew"],"culturalBackground":"american","values":["education","community","family"],"favoriteFood":["mediterranean","american"],"helpWith":["technology help","groceries","rides","errands"],"talkPreferences":["in-person","phone"],"connectionGoals":["mentorship","friendship","companionship"],"familySituation":"student","availableDays":["saturday","sunday","friday"]},
     {"userType":"companion","name":"Jordan","age":35,"location":"atlanta","faith":"methodist","interests":["walking","fishing","cooking","music"],"languages":["english"],"culturalBackground":"american","values":["honesty","kindness","community"],"favoriteFood":["southern","american","seafood"],"helpWith":["yard work","rides","errands","groceries"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","companionship","activity partner"],"familySituation":"married","availableDays":["saturday","sunday","thursday"]},
-    # ── New 8 ───────────────────────────────────────────────────────────────
-    {"userType":"companion","name":"Rachel","age":25,"location":"atlanta","faith":"christian","interests":["reading","hiking","cooking","volunteering","yoga"],"languages":["english"],"culturalBackground":"american","values":["kindness","service","wellness","community"],"favoriteFood":["healthy","american","mediterranean"],"helpWith":["rides","groceries","errands","technology help","appointments"],"talkPreferences":["in-person","phone","video call"],"connectionGoals":["friendship","companionship","mentorship","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","monday","wednesday"]},
+    # ── 2nd batch (diverse metro locations) ────────────────────────────────
+    {"userType":"companion","name":"Rachel","age":25,"location":"roswell","faith":"christian","interests":["reading","hiking","cooking","volunteering","yoga"],"languages":["english"],"culturalBackground":"american","values":["kindness","service","wellness","community"],"favoriteFood":["healthy","american","mediterranean"],"helpWith":["rides","groceries","errands","technology help","appointments"],"talkPreferences":["in-person","phone","video call"],"connectionGoals":["friendship","companionship","mentorship","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","monday","wednesday"]},
     {"userType":"companion","name":"Kwame","age":29,"location":"decatur","faith":"baptist","interests":["music","cooking","walking","community","sports"],"languages":["english"],"culturalBackground":"american","values":["community","generosity","family","faith"],"favoriteFood":["soul food","southern","american","caribbean"],"helpWith":["rides","yard work","groceries","errands","technology help"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","companionship","learning from elders","mentorship"],"familySituation":"single","availableDays":["saturday","sunday","tuesday","thursday"]},
-    {"userType":"companion","name":"Mei","age":23,"location":"atlanta","faith":"none","interests":["cooking","reading","art","painting","technology"],"languages":["english","mandarin"],"culturalBackground":"chinese","values":["education","creativity","respect","family"],"favoriteFood":["asian","chinese","healthy","mediterranean"],"helpWith":["technology help","rides","errands","groceries","phone setup"],"talkPreferences":["in-person","video call","phone"],"connectionGoals":["friendship","companionship","cultural exchange","mentorship"],"familySituation":"student","availableDays":["saturday","sunday","friday","monday"]},
+    {"userType":"companion","name":"Mei","age":23,"location":"sandy springs","faith":"none","interests":["cooking","reading","art","painting","technology"],"languages":["english","mandarin"],"culturalBackground":"chinese","values":["education","creativity","respect","family"],"favoriteFood":["asian","chinese","healthy","mediterranean"],"helpWith":["technology help","rides","errands","groceries","phone setup"],"talkPreferences":["in-person","video call","phone"],"connectionGoals":["friendship","companionship","cultural exchange","mentorship"],"familySituation":"student","availableDays":["saturday","sunday","friday","monday"]},
     {"userType":"companion","name":"Patrick","age":33,"location":"marietta","faith":"catholic","interests":["hiking","cooking","history","music","reading"],"languages":["english"],"culturalBackground":"irish","values":["loyalty","family","community","honesty"],"favoriteFood":["irish","american","bbq","italian"],"helpWith":["rides","yard work","errands","groceries","technology help"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","companionship","learning from elders","activity partner"],"familySituation":"single","availableDays":["saturday","sunday","tuesday","thursday"]},
-    {"userType":"companion","name":"Fatima","age":27,"location":"atlanta","faith":"muslim","interests":["reading","cooking","volunteering","art","walking"],"languages":["english","arabic"],"culturalBackground":"middle eastern","values":["faith","family","compassion","education","service"],"favoriteFood":["middle eastern","mediterranean","healthy","american"],"helpWith":["rides","groceries","errands","technology help","company"],"talkPreferences":["in-person","phone","video call"],"connectionGoals":["friendship","companionship","mentorship","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","wednesday","friday"]},
-    {"userType":"companion","name":"Alex","age":26,"location":"smyrna","faith":"christian","interests":["technology","walking","cooking","movies","gaming"],"languages":["english"],"culturalBackground":"american","values":["kindness","patience","community","honesty"],"favoriteFood":["american","asian","bbq"],"helpWith":["technology help","rides","phone setup","computer help","errands","groceries"],"talkPreferences":["in-person","video call","phone"],"connectionGoals":["friendship","companionship","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","monday","thursday"]},
+    {"userType":"companion","name":"Fatima","age":27,"location":"dunwoody","faith":"muslim","interests":["reading","cooking","volunteering","art","walking"],"languages":["english","arabic"],"culturalBackground":"middle eastern","values":["faith","family","compassion","education","service"],"favoriteFood":["middle eastern","mediterranean","healthy","american"],"helpWith":["rides","groceries","errands","technology help","company"],"talkPreferences":["in-person","phone","video call"],"connectionGoals":["friendship","companionship","mentorship","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","wednesday","friday"]},
+    {"userType":"companion","name":"Alex","age":26,"location":"kennesaw","faith":"christian","interests":["technology","walking","cooking","movies","gaming"],"languages":["english"],"culturalBackground":"american","values":["kindness","patience","community","honesty"],"favoriteFood":["american","asian","bbq"],"helpWith":["technology help","rides","phone setup","computer help","errands","groceries"],"talkPreferences":["in-person","video call","phone"],"connectionGoals":["friendship","companionship","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","monday","thursday"]},
     {"userType":"companion","name":"Lucia","age":30,"location":"norcross","faith":"catholic","interests":["dancing","cooking","music","gardening","volunteering"],"languages":["spanish","english"],"culturalBackground":"colombian","values":["family","faith","joy","community","generosity"],"favoriteFood":["colombian","latin american","mexican","italian"],"helpWith":["rides","errands","groceries","cooking","technology help"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","companionship","cultural exchange","mentorship"],"familySituation":"single","availableDays":["saturday","sunday","wednesday","friday"]},
-    {"userType":"companion","name":"Daniel","age":24,"location":"atlanta","faith":"jewish","interests":["chess","reading","history","cooking","theater"],"languages":["english","hebrew"],"culturalBackground":"american","values":["education","community","family","intellectual curiosity"],"favoriteFood":["jewish deli","mediterranean","american"],"helpWith":["technology help","rides","errands","groceries","company"],"talkPreferences":["in-person","phone"],"connectionGoals":["mentorship","friendship","intellectual conversation","companionship"],"familySituation":"student","availableDays":["saturday","sunday","tuesday","friday"]},
+    {"userType":"companion","name":"Daniel","age":24,"location":"alpharetta","faith":"jewish","interests":["chess","reading","history","cooking","theater"],"languages":["english","hebrew"],"culturalBackground":"american","values":["education","community","family","intellectual curiosity"],"favoriteFood":["jewish deli","mediterranean","american"],"helpWith":["technology help","rides","errands","groceries","company"],"talkPreferences":["in-person","phone"],"connectionGoals":["mentorship","friendship","intellectual conversation","companionship"],"familySituation":"student","availableDays":["saturday","sunday","tuesday","friday"]},
+    # ── 3rd batch (broader metro spread) ───────────────────────────────────
+    {"userType":"companion","name":"Jasmine","age":28,"location":"roswell","faith":"baptist","interests":["reading","music","volunteering","walking","baking"],"languages":["english"],"culturalBackground":"american","values":["faith","community","kindness","service"],"favoriteFood":["southern","soul food","american"],"helpWith":["rides","groceries","errands","companionship","technology help"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","companionship","mentorship","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","wednesday","friday"]},
+    {"userType":"companion","name":"Oliver","age":31,"location":"sandy springs","faith":"methodist","interests":["walking","history","cooking","music","reading"],"languages":["english"],"culturalBackground":"american","values":["honesty","community","loyalty","family"],"favoriteFood":["american","southern","mediterranean"],"helpWith":["rides","yard work","groceries","errands","technology help"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","companionship","activity partner","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","monday","thursday"]},
+    {"userType":"companion","name":"Yuna","age":25,"location":"dunwoody","faith":"christian","interests":["cooking","art","music","technology","gardening"],"languages":["english","korean"],"culturalBackground":"korean","values":["respect","family","hard work","kindness"],"favoriteFood":["korean","asian","american","healthy"],"helpWith":["technology help","rides","groceries","errands","phone setup"],"talkPreferences":["in-person","video call","phone"],"connectionGoals":["friendship","companionship","cultural exchange","mentorship"],"familySituation":"single","availableDays":["saturday","sunday","monday","friday"]},
+    {"userType":"companion","name":"Darius","age":32,"location":"kennesaw","faith":"baptist","interests":["sports","music","cooking","walking","community"],"languages":["english"],"culturalBackground":"american","values":["community","generosity","faith","loyalty"],"favoriteFood":["southern","bbq","soul food","american"],"helpWith":["rides","yard work","errands","groceries","technology help"],"talkPreferences":["in-person","phone"],"connectionGoals":["friendship","companionship","learning from elders","activity partner"],"familySituation":"single","availableDays":["saturday","sunday","tuesday","thursday"]},
+    {"userType":"companion","name":"Bianca","age":34,"location":"alpharetta","faith":"christian","interests":["gardening","cooking","volunteering","reading","crafts"],"languages":["english"],"culturalBackground":"american","values":["kindness","community","wellness","service"],"favoriteFood":["healthy","american","mediterranean","italian"],"helpWith":["rides","groceries","errands","yard work","companionship"],"talkPreferences":["in-person","phone","video call"],"connectionGoals":["friendship","companionship","mentorship","learning from elders"],"familySituation":"single","availableDays":["saturday","sunday","wednesday","friday"]},
 ]
 
 SEED_CANDIDATES = SENIOR_PROFILES + COMPANION_PROFILES
@@ -139,7 +161,7 @@ def get_candidates_by_type(user_type):
 # Nearby cities
 # ---------------------------------------------------------------------------
 NEARBY_CITIES = {
-    # Atlanta metro cluster — all within ~30 miles of each other
+    # Atlanta metro cluster — all within ~35 miles of downtown Atlanta
     frozenset({"atlanta", "marietta"}),
     frozenset({"atlanta", "decatur"}),
     frozenset({"atlanta", "smyrna"}),
@@ -147,13 +169,23 @@ NEARBY_CITIES = {
     frozenset({"atlanta", "kennesaw"}),
     frozenset({"atlanta", "sandy springs"}),
     frozenset({"atlanta", "roswell"}),
+    frozenset({"atlanta", "alpharetta"}),
+    frozenset({"atlanta", "dunwoody"}),
+    frozenset({"atlanta", "stone mountain"}),
     frozenset({"marietta", "smyrna"}),
     frozenset({"marietta", "kennesaw"}),
     frozenset({"marietta", "roswell"}),
+    frozenset({"marietta", "alpharetta"}),
     frozenset({"decatur", "norcross"}),
+    frozenset({"decatur", "stone mountain"}),
     frozenset({"smyrna", "kennesaw"}),
     frozenset({"norcross", "roswell"}),
     frozenset({"norcross", "sandy springs"}),
+    frozenset({"norcross", "alpharetta"}),
+    frozenset({"roswell", "alpharetta"}),
+    frozenset({"roswell", "sandy springs"}),
+    frozenset({"sandy springs", "dunwoody"}),
+    frozenset({"dunwoody", "alpharetta"}),
     # Phoenix metro cluster
     frozenset({"phoenix", "tempe"}),
     frozenset({"phoenix", "scottsdale"}),
@@ -205,23 +237,33 @@ _STOPWORDS = {
     'little','older','young','years','year','them','those','these',
 }
 
-_HOBBY_KW    = {'gardening','cooking','baking','reading','walking','music','singing',
-                'dancing','painting','knitting','chess','golf','fishing','hiking',
-                'yoga','volunteering','church','prayer','sewing','crafting','puzzles',
-                'movies','travel','photography','sports','running','cycling','swimming',
-                'writing','drawing','theater','history','crossword','crafts'}
+_HOBBY_KW    = {'gardening','garden','cook','cooking','baking','bake','read','reading',
+                'walk','walking','music','singing','sing','dance','dancing','paint',
+                'painting','knitting','knit','chess','golf','fish','fishing','hike',
+                'hiking','yoga','volunteer','volunteering','church','prayer','pray',
+                'sewing','sew','craft','crafting','crafts','puzzle','puzzles','movie',
+                'movies','travel','traveling','photography','sports','sport','running',
+                'run','cycling','cycle','swim','swimming','writing','write','draw',
+                'drawing','theater','history','crossword','exercise','exercising',
+                'game','gaming','book','books','arts','arts'}
 
-_VALUE_KW    = {'family','faith','honesty','kindness','respect','community','loyalty',
-                'patience','compassion','generosity','education','creativity','wellness',
-                'integrity','service','spiritual','friendship','gratitude','love','joy'}
+_VALUE_KW    = {'family','faith','honesty','honest','kindness','kind','respect',
+                'community','loyal','loyalty','patient','patience','compassion',
+                'generous','generosity','education','creativity','creative','wellness',
+                'integrity','service','spiritual','spirituality','friendship','friend',
+                'gratitude','grateful','love','loving','joyful','joy','trust',
+                'trustworthy','caring','care','humble','humility'}
 
-_HELP_KW     = {'rides','groceries','technology','errands','cooking','cleaning','yard',
-                'laundry','appointments','phone','computer','shopping','medication',
-                'exercise','company','conversation','lifting','driving'}
+_HELP_KW     = {'ride','rides','driving','drive','groceries','grocery','technology',
+                'tech','errand','errands','cook','cooking','clean','cleaning','yard',
+                'laundry','appointment','appointments','phone','computer','shopping',
+                'shop','medication','medications','exercise','company','conversation',
+                'talk','lifting','transportation','delivery','repairs','repair'}
 
-_GOAL_KW     = {'companionship','friendship','conversation','activity','mentorship',
-                'learning','social','connection','support','community','sharing',
-                'companion'}
+_GOAL_KW     = {'companionship','companion','friendship','friend','conversation','talk',
+                'activity','activities','mentor','mentorship','learning','learn','social',
+                'connection','connect','support','community','share','sharing','bond',
+                'bonding','meeting','meet','relationship','together','company'}
 
 _KNOWN_CITIES = ['atlanta','marietta','decatur','smyrna','norcross','phoenix','tempe',
                  'scottsdale','chicago','dallas','houston','boston','denver','seattle',
@@ -489,21 +531,85 @@ def compute_ml_score(senior, companion):
 
 
 def compute_rule_score(senior, companion):
+    """
+    Feature-weighted rule score → realistic 60–92 pt range.
+
+    Calibrated so that:
+      • Strong match (same city, 2 shared interests, same faith/culture) → ~87–92
+      • Typical match (same metro, 1 interest, broad faith)              → ~74–82
+      • Weaker match  (different metro, no shared interests)             → ~55–65
+    """
     f = derive_ml_features(senior, companion)
-    score = 0
-    score += 20 if f["same_city"] else 0
-    score += 20 if f["same_mobility"] else 0
-    score += min(f["interest_overlap"] * 8, 25)
-    score += 15 if f["volunteering_help_match"] else 0
-    score += 10 if f["life_stage_needs_alignment"] else 0
-    score += 10 if f["tech_compatibility"] else 0
-    return round(score, 1)
+    score = 0.0
+
+    # Location proximity — essential for in-person meetups (15 pts)
+    if f["same_city"]:
+        score += 15
+
+    # Age-gap quality: ideal ~38 yrs; continuous 0–15 pts
+    age_gap = f["age_diff"]
+    if 15 <= age_gap <= 55:
+        score += max(0.0, 15.0 - abs(age_gap - 38) * 0.35)
+
+    # Shared interests — 8 pts each, capped at 2 overlaps (max 16 pts)
+    score += min(f["interest_overlap"] * 8, 16)
+
+    # Companion can meet senior's practical needs (13 pts)
+    if f["volunteering_help_match"]:
+        score += 13
+
+    # Both seeking companionship / friendship (10 pts)
+    if f["life_stage_needs_alignment"]:
+        score += 10
+
+    # Shared communication preferences (6 pts)
+    if f["comm_style_compatibility"]:
+        score += 6
+
+    # Goals overlap (5 pts)
+    if f["companionship_gap_overlap"]:
+        score += 5
+
+    # Faith / religion compatibility (6 pts exact match, 3 pts broad)
+    if f["same_religion"]:
+        score += 6
+    elif f["holiday_overlap"]:
+        score += 3
+
+    # Same cultural background (4 pts)
+    if f["cultural_background_match"]:
+        score += 4
+
+    # Companion more tech-savvy → can help senior (3 pts)
+    if f["tech_compatibility"]:
+        score += 3
+
+    # Shared values + interests crossover (3 pts)
+    if f["shared_memory_trigger_overlap"]:
+        score += 3
+
+    return round(min(max(score, 40.0), 92.0), 1)
 
 
 def compute_match_score(senior, companion):
+    """
+    Hybrid: 70 % rule-based (variance) + 30 % ML (directional signal).
+    With ML currently at ~100 %, the 30 % ML contribution lifts all scores
+    into a reliable 75–93 % range for good matches.
+
+    Effective output with ML at 100 %:
+      rule 55 → blended ~69 %   (fair)
+      rule 65 → blended ~76 %   (good)
+      rule 75 → blended ~83 %   (great)
+      rule 85 → blended ~90 %   (excellent)
+      rule 92 → blended ~94 %   (exceptional)
+    """
+    rule = compute_rule_score(senior, companion)
     if ML_MODEL and ML_SCALER:
-        return compute_ml_score(senior, companion)
-    return compute_rule_score(senior, companion)
+        ml = compute_ml_score(senior, companion)
+        blended = rule * 0.70 + ml * 0.30
+        return round(min(blended, 96.0), 1)
+    return rule
 
 
 def build_feature_breakdown(senior, companion):
@@ -583,8 +689,28 @@ def calculate_matches():
 
         matches.sort(key=lambda x: x["score"], reverse=True)
 
+        # Apply city diversity: no more than 2 results from the exact same city
+        # so the top-10 pool shows varied locations.
+        city_count: dict = {}
+        diverse: list = []
+        remainder: list = []
+        for m in matches:
+            city = (m["candidate"].get("location") or "").lower().strip()
+            if city_count.get(city, 0) < 2:
+                diverse.append(m)
+                city_count[city] = city_count.get(city, 0) + 1
+            else:
+                remainder.append(m)
+            if len(diverse) >= 10:
+                break
+        # Fill up to 10 if diversity constraint left gaps
+        for m in remainder:
+            if len(diverse) >= 10:
+                break
+            diverse.append(m)
+
         return jsonify({
-            "matches":          matches[:3],
+            "matches":          diverse[:10],
             "total_candidates": len(candidates),
             "scoring_method":   "ml_model" if (ML_MODEL and ML_SCALER) else "rule_based",
         }), 200
@@ -631,19 +757,82 @@ def add_user():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/users/<path:email>", methods=["PUT"])
+def update_user(email):
+    """Update an existing user's profile by email."""
+    try:
+        updates = request.json or {}
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        # Find the row by email stored inside the JSON profile
+        c.execute("SELECT id, profile FROM candidates")
+        rows = c.fetchall()
+        target_id = None
+        for row_id, profile_json in rows:
+            try:
+                p = json.loads(profile_json)
+                if p.get("email", "").lower() == email.lower():
+                    target_id = row_id
+                    # Merge updates into existing profile
+                    p.update(updates)
+                    c.execute(
+                        "UPDATE candidates SET name=?, profile=? WHERE id=?",
+                        (p.get("name", "Unknown"), json.dumps(p), row_id)
+                    )
+                    break
+            except Exception:
+                continue
+        conn.commit()
+        conn.close()
+        if target_id:
+            return jsonify({"status": "updated", "id": target_id}), 200
+        return jsonify({"status": "not_found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/transcribe", methods=["POST"])
+def transcribe_audio():
+    try:
+        data = request.get_json()
+        if not data or "audio" not in data:
+            return jsonify({"error": "No audio data provided"}), 400
+
+        audio_b64 = data["audio"]
+        fmt = data.get("format", "m4a")
+        audio_bytes = base64.b64decode(audio_b64)
+
+        with tempfile.NamedTemporaryFile(suffix=f".{fmt}", delete=False) as tmp:
+            tmp_path = tmp.name
+            tmp.write(audio_bytes)
+
+        try:
+            model = get_whisper_model()
+            result = model.transcribe(tmp_path)
+            text = result["text"].strip()
+        finally:
+            os.unlink(tmp_path)
+
+        return jsonify({"text": text}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ---------------------------------------------------------------------------
 # Startup
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     init_db()
     print("\n" + "=" * 55)
-    print("Community Connection Backend — Intergenerational Mode")
+    print("Community Connection Backend")
     print("=" * 55)
     print(f"  Scoring: {'ML Neural Network' if ML_MODEL else 'Rule-based (fallback)'}")
-    print("  GET  /health           - Health check")
-    print("  GET  /api/candidates   - List all profiles")
-    print("  GET  /api/users        - List all users")
-    print("  POST /api/match        - Match senior <-> companion")
-    print("  POST /api/users        - Add new user")
+    print("  GET  /health                  - Health check")
+    print("  GET  /api/candidates          - List all profiles")
+    print("  GET  /api/users               - List all users")
+    print("  POST /api/match               - Find top matches")
+    print("  POST /api/users               - Add new user")
+    print("  PUT  /api/users/<email>       - Update user profile")
+    print("  POST /api/transcribe          - Transcribe audio (Whisper)")
     print("=" * 55 + "\n")
-    app.run(host="0.0.0.0", debug=True, port=5000)
+    app.run(host="0.0.0.0", debug=True, port=5000, use_reloader=False)
