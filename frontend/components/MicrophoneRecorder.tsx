@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert } from "react-native";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
+import { BASE_URL } from "../utils/api";
 
 type MicrophoneRecorderProps = {
   onPartialText?: (text: string) => void;
@@ -17,13 +18,112 @@ export default function MicrophoneRecorder({
   onPartialText,
   onFinish,
 }: MicrophoneRecorderProps) {
+  // Native recording state (expo-av)
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  const [audioUri, setAudioUri] = useState<string | null>(null);
-  const recognitionRef = useRef<any>(null);
-  const finalTextRef   = useRef("");   // set only when Chrome fires isFinal=true
-  const latestTextRef  = useRef("");   // updated on EVERY result (interim + final)
 
-  async function startRecording() {
+  // Web-only: tracks whether SpeechRecognition is active
+  // (we never use expo-av Audio.Recording on web — it's unreliable there)
+  const [isListening, setIsListening] = useState(false);
+
+  const recognitionRef = useRef<any>(null);
+  const finalTextRef   = useRef("");  // set when Chrome fires isFinal=true
+  const latestTextRef  = useRef("");  // updated on every result (interim + final)
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // WEB PATH — SpeechRecognition only, no expo-av
+  // ─────────────────────────────────────────────────────────────────────────
+
+  function startWebRecording() {
+    const SR =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SR) {
+      Alert.alert(
+        "Browser Not Supported",
+        "Voice recording requires Chrome or Edge. Please open the app in Chrome."
+      );
+      return;
+    }
+
+    // Reset transcript state for this session
+    finalTextRef.current  = "";
+    latestTextRef.current = "";
+
+    const recognition = new SR();
+    recognition.interimResults = true;
+    recognition.continuous     = true;
+    recognition.lang           = "en-US";
+
+    recognition.onresult = (event: any) => {
+      let transcript = "";
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+
+      // Always keep the latest text — used as fallback if isFinal never fires
+      latestTextRef.current = transcript;
+
+      // Show live text while speaking
+      if (onPartialText) onPartialText(transcript);
+
+      if (event.results[event.results.length - 1].isFinal) {
+        finalTextRef.current = transcript;
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      if (event.error === "not-allowed" || event.error === "permission-denied") {
+        Alert.alert(
+          "Microphone Blocked",
+          "Please allow microphone access in your browser settings, then try again."
+        );
+        recognitionRef.current = null;
+        setIsListening(false);
+      } else if (event.error !== "no-speech" && event.error !== "aborted") {
+        // no-speech and aborted are harmless; others are worth logging
+        console.warn("SpeechRecognition error:", event.error);
+      }
+    };
+
+    // Chrome auto-stops recognition after silence or ~60 s.
+    // Auto-restart it so recording keeps going until the user hits ⏹.
+    recognition.onend = () => {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.start(); } catch (_) { /* already stopped */ }
+      }
+    };
+
+    recognition.start();
+    recognitionRef.current = recognition;
+    setIsListening(true);
+  }
+
+  function stopWebRecording() {
+    if (recognitionRef.current) {
+      // Clear onend first so the auto-restart doesn't fire after we stop
+      recognitionRef.current.onend = null;
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+
+    const text = finalTextRef.current || latestTextRef.current || "";
+    finalTextRef.current  = "";
+    latestTextRef.current = "";
+
+    const words      = text.replace(/\n/g, " ").split(" ").map(w => w.trim()).filter(Boolean);
+    const csvContent = ["word", ...words].join("\n");
+
+    if (onFinish) {
+      onFinish({ audioUri: null, text, csv: csvContent, csvUri: null });
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // NATIVE PATH — expo-av only
+  // ─────────────────────────────────────────────────────────────────────────
+
+  async function startNativeRecording() {
     try {
       const permission = await Audio.requestPermissionsAsync();
       if (!permission.granted) {
@@ -36,142 +136,113 @@ export default function MicrophoneRecorder({
         playsInSilentModeIOS: true,
       });
 
-      const { recording } = await Audio.Recording.createAsync(
+      const { recording: rec } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
-
-      setRecording(recording);
+      setRecording(rec);
     } catch (err) {
       Alert.alert("Recording Error", String(err));
-      return;
-    }
-
-    if (Platform.OS === "web") {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-      if (!SpeechRecognition) return;
-
-      const recognition = new SpeechRecognition();
-      recognition.interimResults = true;
-      recognition.continuous = true;
-      recognition.lang = "en-US";
-
-      recognition.onresult = (event: any) => {
-        let transcript = "";
-
-        for (let i = 0; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
-        }
-
-        // Always keep the most recent transcript, whether interim or final.
-        // This is the fallback used if Chrome never fires isFinal=true
-        // (e.g. when the user speaks continuously and hits stop immediately).
-        latestTextRef.current = transcript;
-
-        const isFinal = event.results[event.results.length - 1].isFinal;
-
-        // Show live partial text while speaking
-        if (onPartialText) {
-          onPartialText(transcript);
-        }
-
-        if (isFinal) {
-          finalTextRef.current = transcript;
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        // Silently ignore "no-speech" — it's not a real error
-        if (event.error !== "no-speech") {
-          console.warn("SpeechRecognition error:", event.error);
-        }
-      };
-
-      recognition.start();
-      recognitionRef.current = recognition;
     }
   }
 
-  async function stopRecording() {
+  async function stopNativeRecording() {
     let uri: string | null = null;
 
     if (recording) {
       await recording.stopAndUnloadAsync();
       uri = recording.getURI();
-      setAudioUri(uri);
       setRecording(null);
     }
 
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
+    // Send audio to Flask backend for Whisper transcription
+    let text = "";
+    console.log("Transcription target URL:", `${BASE_URL}/api/transcribe`);
+    console.log("Audio URI:", uri);
+    if (uri) {
+      try {
+        const base64Audio = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        const response = await fetch(`${BASE_URL}/api/transcribe`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ audio: base64Audio, format: "m4a" }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          text = data.text || "";
+          if (onPartialText) onPartialText(text);
+        } else {
+          console.warn("Transcription failed:", await response.text());
+        }
+      } catch (err) {
+        console.warn("Transcription error:", err);
+      }
     }
 
-    // Prefer a confirmed-final transcript; fall back to the last interim one.
-    // Chrome often never fires isFinal=true if the user speaks without pausing,
-    // so latestTextRef gives us the text that was visible in the live box.
-    const text = finalTextRef.current || latestTextRef.current || "";
-
-    // Reset refs for next recording session
-    finalTextRef.current  = "";
-    latestTextRef.current = "";
-
-    const words = text
-      .replace(/\n/g, " ")
-      .split(" ")
-      .map((w) => w.trim())
-      .filter((w) => w.length > 0);
-
+    const words      = text.replace(/\n/g, " ").split(" ").map((w: string) => w.trim()).filter(Boolean);
     const csvContent = ["word", ...words].join("\n");
 
     let savedAudioPath: string | null = null;
-    let savedCsvPath: string | null = null;
+    let savedCsvPath: string | null   = null;
 
-    if (Platform.OS !== "web") {
+    if (uri) {
       const folder = FileSystem.documentDirectory + "recordings/";
       await FileSystem.makeDirectoryAsync(folder, { intermediates: true });
 
-      if (uri) {
-        const audioFilename = `audio_${Date.now()}.m4a`;
-        savedAudioPath = folder + audioFilename;
-
-        await FileSystem.copyAsync({
-          from: uri,
-          to: savedAudioPath,
-        });
-      }
+      const audioFilename = `audio_${Date.now()}.m4a`;
+      savedAudioPath = folder + audioFilename;
+      await FileSystem.copyAsync({ from: uri, to: savedAudioPath });
 
       const csvFilename = `transcript_${Date.now()}.csv`;
       savedCsvPath = folder + csvFilename;
-
       await FileSystem.writeAsStringAsync(savedCsvPath, csvContent, {
         encoding: FileSystem.EncodingType.UTF8,
       });
     }
 
     if (onFinish) {
-      onFinish({
-        audioUri: savedAudioPath || uri,
-        text,
-        csv: csvContent,
-        csvUri: savedCsvPath,
-      });
+      onFinish({ audioUri: savedAudioPath || uri, text, csv: csvContent, csvUri: savedCsvPath });
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Unified handlers — route to web or native
+  // ─────────────────────────────────────────────────────────────────────────
+
+  function handleStart() {
+    if (Platform.OS === "web") {
+      startWebRecording();
+    } else {
+      startNativeRecording();
+    }
+  }
+
+  async function handleStop() {
+    if (Platform.OS === "web") {
+      stopWebRecording();
+    } else {
+      await stopNativeRecording();
+    }
+  }
+
+  // Show stop button when either expo-av recording OR web SpeechRecognition is active
+  const active = recording !== null || isListening;
+
   return (
     <View style={styles.container}>
-      {!recording ? (
+      {!active ? (
         <>
-          <TouchableOpacity style={styles.micButton} onPress={startRecording}>
+          <TouchableOpacity style={styles.micButton} onPress={handleStart}>
             <Text style={styles.micIcon}>🎤</Text>
           </TouchableOpacity>
           <Text style={styles.helperText}>Tap to start recording</Text>
         </>
       ) : (
         <>
-          <TouchableOpacity style={styles.stopButton} onPress={stopRecording}>
+          <TouchableOpacity style={styles.stopButton} onPress={handleStop}>
             <Text style={styles.stopIcon}>⏹</Text>
           </TouchableOpacity>
           <Text style={styles.helperText}>Tap to stop recording</Text>

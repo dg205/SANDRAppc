@@ -42,7 +42,7 @@ export default function RegistrationType() {
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>
-          We'll match seniors with young companions for meaningful intergenerational connections.
+          We'll match seniors with young companions for meaningful connections and friendship.
         </Text>
       </View>
     </View>

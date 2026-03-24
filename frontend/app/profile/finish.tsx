@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator, Ale
 import { router } from "expo-router";
 import { addUser, BASE_URL } from "../../utils/api";
 import { useProfile } from "../../utils/ProfileContext";
+import { saveItem, SESSION_KEY } from "../../utils/storage";
 
 export default function Finish() {
   const [loading, setLoading] = useState(false);
@@ -33,12 +34,15 @@ export default function Finish() {
         score:    m.score               ?? 0,
       }));
 
+      // Persist session so dashboard + edit profile can read it later
+      const userName = profile.name ?? "";
+      await saveItem(SESSION_KEY, JSON.stringify({ ...profile, name: userName }));
       resetProfile();
 
-      // Pass matches to MatchResults screen
+      // Pass matches + user's name to MatchResults screen
       router.push({
         pathname: "/profile/MatchResults",
-        params: { matches: JSON.stringify(flattened) },
+        params: { matches: JSON.stringify(flattened), userName },
       });
     } catch (err: any) {
       Alert.alert(
@@ -56,7 +60,7 @@ export default function Finish() {
       <Image source={require("../../assets/logo.png")} style={styles.logo} />
 
       <View style={styles.card}>
-        <Text style={styles.title}>You're all set! 🎉</Text>
+        <Text style={styles.title}>You're all set!</Text>
         <Text style={styles.caption}>Your profile has been created.</Text>
 
         <TouchableOpacity
