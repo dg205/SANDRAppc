@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import sqlite3
 import json
+import time
 import os
 import pickle
 import re
@@ -9,6 +10,7 @@ import tempfile
 import base64
 import numpy as np
 import pandas as pd
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 CORS(app)
@@ -31,6 +33,8 @@ def get_whisper_model():
 DB_PATH = os.path.join(os.path.dirname(__file__), "candidates.db")
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "trained_model.pkl")
 SCALER_PATH = os.path.join(os.path.dirname(__file__), "scaler.pkl")
+AUDIO_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "AuidoRecordings")
+os.makedirs(AUDIO_UPLOAD_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Load ML model at startup
@@ -694,21 +698,38 @@ def update_user(email):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+#transcribe route
 @app.route("/api/transcribe", methods=["POST"])
 def transcribe_audio():
     tmp_path = None
+    saved_audio_path = None
+
     try:
+        print("[transcribe] content-type:", request.content_type)
+        print("[transcribe] files keys:", list(request.files.keys()))
+        print("[transcribe] json present:", request.is_json)
+
         model = get_whisper_model()
 
         # Preferred path: multipart/form-data file upload
         if "audio" in request.files:
             audio_file = request.files["audio"]
-            original_name = audio_file.filename or "recording.m4a"
+            original_name = secure_filename(audio_file.filename or "recording.m4a")
             ext = os.path.splitext(original_name)[1].lower() or ".m4a"
 
+            timestamp = int(time.time() * 1000)
+            final_name = f"{timestamp}_{original_name}"
+            saved_audio_path = os.path.join(AUDIO_UPLOAD_DIR, final_name)
+
+            # Save permanent copy in backend/AuidoRecordings
+            audio_file.save(saved_audio_path)
+
+            # Also create a temp copy for Whisper processing
             with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
                 tmp_path = tmp.name
-                audio_file.save(tmp_path)
+
+            with open(saved_audio_path, "rb") as src, open(tmp_path, "wb") as dst:
+                dst.write(src.read())
 
         # Backward-compatible fallback: JSON base64
         else:
@@ -720,10 +741,20 @@ def transcribe_audio():
             fmt = data.get("format", "m4a")
             audio_bytes = base64.b64decode(audio_b64)
 
+            timestamp = int(time.time() * 1000)
+            final_name = f"{timestamp}_recording.{fmt}"
+            saved_audio_path = os.path.join(AUDIO_UPLOAD_DIR, final_name)
+
+            # Save permanent copy
+            with open(saved_audio_path, "wb") as f:
+                f.write(audio_bytes)
+
+            # Temp copy for Whisper
             with tempfile.NamedTemporaryFile(suffix=f".{fmt}", delete=False) as tmp:
                 tmp_path = tmp.name
                 tmp.write(audio_bytes)
 
+        print(f"[transcribe] saved audio: {saved_audio_path}")
         print(f"[transcribe] temp file: {tmp_path}")
 
         result = model.transcribe(
@@ -733,7 +764,11 @@ def transcribe_audio():
         )
 
         text = (result.get("text") or "").strip()
-        return jsonify({"text": text}), 200
+
+        return jsonify({
+            "text": text,
+            "saved_audio_path": saved_audio_path
+        }), 200
 
     except Exception as e:
         print(f"[transcribe] error: {e}")
