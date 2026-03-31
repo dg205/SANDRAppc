@@ -18,21 +18,35 @@ export default function MicrophoneRecorder({
   onPartialText,
   onFinish,
 }: MicrophoneRecorderProps) {
-  // Native recording state (expo-av)
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
-
-  // Web-only: tracks whether SpeechRecognition is active
-  // (we never use expo-av Audio.Recording on web — it's unreliable there)
   const [isListening, setIsListening] = useState(false);
 
   const recognitionRef = useRef<any>(null);
-  const finalTextRef   = useRef("");  // set when Chrome fires isFinal=true
-  const latestTextRef  = useRef("");  // updated on every result (interim + final)
+  const finalTextRef = useRef("");
+  const latestTextRef = useRef("");
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // WEB PATH — SpeechRecognition only, no expo-av
-  // ─────────────────────────────────────────────────────────────────────────
+  // Native recorder refs/locks
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const isStartingRef = useRef(false);
+  const isStoppingRef = useRef(false);
 
+  function makeCsv(text: string) {
+    const words = text
+      .replace(/\n/g, " ")
+      .split(" ")
+      .map((w) => w.trim())
+      .filter(Boolean);
+
+    return ["word", ...words].join("\n");
+  }
+
+  function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  // =========================
+  // WEB
+  // =========================
   function startWebRecording() {
     const SR =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -45,14 +59,13 @@ export default function MicrophoneRecorder({
       return;
     }
 
-    // Reset transcript state for this session
-    finalTextRef.current  = "";
+    finalTextRef.current = "";
     latestTextRef.current = "";
 
     const recognition = new SR();
     recognition.interimResults = true;
-    recognition.continuous     = true;
-    recognition.lang           = "en-US";
+    recognition.continuous = true;
+    recognition.lang = "en-US";
 
     recognition.onresult = (event: any) => {
       let transcript = "";
@@ -60,11 +73,8 @@ export default function MicrophoneRecorder({
         transcript += event.results[i][0].transcript;
       }
 
-      // Always keep the latest text — used as fallback if isFinal never fires
       latestTextRef.current = transcript;
-
-      // Show live text while speaking
-      if (onPartialText) onPartialText(transcript);
+      onPartialText?.(transcript);
 
       if (event.results[event.results.length - 1].isFinal) {
         finalTextRef.current = transcript;
@@ -80,16 +90,15 @@ export default function MicrophoneRecorder({
         recognitionRef.current = null;
         setIsListening(false);
       } else if (event.error !== "no-speech" && event.error !== "aborted") {
-        // no-speech and aborted are harmless; others are worth logging
         console.warn("SpeechRecognition error:", event.error);
       }
     };
 
-    // Chrome auto-stops recognition after silence or ~60 s.
-    // Auto-restart it so recording keeps going until the user hits ⏹.
     recognition.onend = () => {
       if (recognitionRef.current) {
-        try { recognitionRef.current.start(); } catch (_) { /* already stopped */ }
+        try {
+          recognitionRef.current.start();
+        } catch (_) {}
       }
     };
 
@@ -100,30 +109,37 @@ export default function MicrophoneRecorder({
 
   function stopWebRecording() {
     if (recognitionRef.current) {
-      // Clear onend first so the auto-restart doesn't fire after we stop
       recognitionRef.current.onend = null;
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }
+
     setIsListening(false);
 
     const text = finalTextRef.current || latestTextRef.current || "";
-    finalTextRef.current  = "";
+    finalTextRef.current = "";
     latestTextRef.current = "";
 
-    const words      = text.replace(/\n/g, " ").split(" ").map(w => w.trim()).filter(Boolean);
-    const csvContent = ["word", ...words].join("\n");
+    const csvContent = makeCsv(text);
 
-    if (onFinish) {
-      onFinish({ audioUri: null, text, csv: csvContent, csvUri: null });
-    }
+    onFinish?.({
+      audioUri: null,
+      text,
+      csv: csvContent,
+      csvUri: null,
+    });
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // NATIVE PATH — expo-av only
-  // ─────────────────────────────────────────────────────────────────────────
-
+  // =========================
+  // NATIVE
+  // =========================
   async function startNativeRecording() {
+    if (isStartingRef.current || isStoppingRef.current || recordingRef.current) {
+      return;
+    }
+
+    isStartingRef.current = true;
+
     try {
       const permission = await Audio.requestPermissionsAsync();
       if (!permission.granted) {
@@ -139,110 +155,170 @@ export default function MicrophoneRecorder({
       const { recording: rec } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
+
+      recordingRef.current = rec;
       setRecording(rec);
     } catch (err) {
+      console.error("startNativeRecording error:", err);
       Alert.alert("Recording Error", String(err));
+    } finally {
+      isStartingRef.current = false;
+    }
+  }
+
+  async function transcribeNativeAudio(uri: string): Promise<string> {
+    try {
+      const filename = uri.split("/").pop() || `recording-${Date.now()}.m4a`;
+      const lower = filename.toLowerCase();
+
+      let mimeType = "audio/mp4";
+      if (lower.endsWith(".wav")) mimeType = "audio/wav";
+      else if (lower.endsWith(".mp3")) mimeType = "audio/mpeg";
+      else if (lower.endsWith(".aac")) mimeType = "audio/aac";
+      else if (lower.endsWith(".m4a")) mimeType = "audio/mp4";
+      else if (lower.endsWith(".caf")) mimeType = "audio/x-caf";
+
+      const formData = new FormData();
+      formData.append("audio", {
+        uri,
+        name: filename,
+        type: mimeType,
+      } as any);
+
+      const response = await fetch(`${BASE_URL}/api/transcribe`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const raw = await response.text();
+
+      if (!response.ok) {
+        throw new Error(raw || `HTTP ${response.status}`);
+      }
+
+      const data = JSON.parse(raw);
+      return data.text || "";
+    } catch (err) {
+      console.error("transcribeNativeAudio error:", err);
+      Alert.alert("Transcription Error", String(err));
+      return "";
     }
   }
 
   async function stopNativeRecording() {
+    if (isStoppingRef.current) return;
+
+    const rec = recordingRef.current;
+    if (!rec) return;
+
+    isStoppingRef.current = true;
+
     let uri: string | null = null;
 
-    if (recording) {
-      await recording.stopAndUnloadAsync();
-      uri = recording.getURI();
-      setRecording(null);
-    }
-
-    // Send audio to Flask backend for Whisper transcription
-    let text = "";
-    console.log("Transcription target URL:", `${BASE_URL}/api/transcribe`);
-    console.log("Audio URI:", uri);
-    if (uri) {
-      try {
-        const base64Audio = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-
-        const response = await fetch(`${BASE_URL}/api/transcribe`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ audio: base64Audio, format: "m4a" }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          text = data.text || "";
-          if (onPartialText) onPartialText(text);
-        } else {
-          console.warn("Transcription failed:", await response.text());
-        }
-      } catch (err) {
-        console.warn("Transcription error:", err);
+    try {
+      // Small delay helps avoid stopping too quickly after start on Android
+      if (Platform.OS === "android") {
+        await sleep(300);
       }
-    }
 
-    const words      = text.replace(/\n/g, " ").split(" ").map((w: string) => w.trim()).filter(Boolean);
-    const csvContent = ["word", ...words].join("\n");
+      await rec.stopAndUnloadAsync();
+      uri = rec.getURI();
 
-    let savedAudioPath: string | null = null;
-    let savedCsvPath: string | null   = null;
+      recordingRef.current = null;
+      setRecording(null);
 
-    if (uri) {
-      const folder = FileSystem.documentDirectory + "recordings/";
-      await FileSystem.makeDirectoryAsync(folder, { intermediates: true });
+      // Small cooldown so Android fully releases the recorder
+      if (Platform.OS === "android") {
+        await sleep(400);
+      }
 
-      const audioFilename = `audio_${Date.now()}.m4a`;
-      savedAudioPath = folder + audioFilename;
-      await FileSystem.copyAsync({ from: uri, to: savedAudioPath });
+      let text = "";
+      if (uri) {
+        text = await transcribeNativeAudio(uri);
+        onPartialText?.(text);
+      }
 
-      const csvFilename = `transcript_${Date.now()}.csv`;
-      savedCsvPath = folder + csvFilename;
-      await FileSystem.writeAsStringAsync(savedCsvPath, csvContent, {
-        encoding: FileSystem.EncodingType.UTF8,
+      const csvContent = makeCsv(text);
+
+      let savedAudioPath: string | null = null;
+      let savedCsvPath: string | null = null;
+
+      if (uri) {
+        const folder = FileSystem.documentDirectory + "recordings/";
+        await FileSystem.makeDirectoryAsync(folder, { intermediates: true });
+
+        const originalName = uri.split("/").pop() || `audio_${Date.now()}.m4a`;
+        const ext = originalName.includes(".") ? originalName.split(".").pop() : "m4a";
+
+        savedAudioPath = folder + `audio_${Date.now()}.${ext}`;
+        await FileSystem.copyAsync({ from: uri, to: savedAudioPath });
+
+        savedCsvPath = folder + `transcript_${Date.now()}.csv`;
+        await FileSystem.writeAsStringAsync(savedCsvPath, csvContent, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+      }
+
+      onFinish?.({
+        audioUri: savedAudioPath || uri,
+        text,
+        csv: csvContent,
+        csvUri: savedCsvPath,
       });
-    }
+    } catch (err) {
+      console.error("stopNativeRecording error:", err);
 
-    if (onFinish) {
-      onFinish({ audioUri: savedAudioPath || uri, text, csv: csvContent, csvUri: savedCsvPath });
+      // Force-clear local refs/state even if stop failed
+      recordingRef.current = null;
+      setRecording(null);
+
+      Alert.alert("Stop Recording Error", String(err));
+    } finally {
+      if (Platform.OS === "android") {
+        await sleep(250);
+      }
+      isStoppingRef.current = false;
     }
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Unified handlers — route to web or native
-  // ─────────────────────────────────────────────────────────────────────────
 
   function handleStart() {
     if (Platform.OS === "web") {
       startWebRecording();
     } else {
-      startNativeRecording();
+      void startNativeRecording();
     }
   }
 
-  async function handleStop() {
+  function handleStop() {
     if (Platform.OS === "web") {
       stopWebRecording();
     } else {
-      await stopNativeRecording();
+      void stopNativeRecording();
     }
   }
 
-  // Show stop button when either expo-av recording OR web SpeechRecognition is active
   const active = recording !== null || isListening;
 
   return (
     <View style={styles.container}>
       {!active ? (
         <>
-          <TouchableOpacity style={styles.micButton} onPress={handleStart}>
+          <TouchableOpacity
+            style={styles.micButton}
+            onPress={handleStart}
+            disabled={isStartingRef.current || isStoppingRef.current}
+          >
             <Text style={styles.micIcon}>🎤</Text>
           </TouchableOpacity>
           <Text style={styles.helperText}>Tap to start recording</Text>
         </>
       ) : (
         <>
-          <TouchableOpacity style={styles.stopButton} onPress={handleStop}>
+          <TouchableOpacity
+            style={styles.stopButton}
+            onPress={handleStop}
+            disabled={isStartingRef.current || isStoppingRef.current}
+          >
             <Text style={styles.stopIcon}>⏹</Text>
           </TouchableOpacity>
           <Text style={styles.helperText}>Tap to stop recording</Text>
@@ -258,7 +334,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 10,
   },
-
   micButton: {
     width: 110,
     height: 110,
@@ -273,12 +348,10 @@ const styles = StyleSheet.create({
     elevation: 6,
     marginBottom: 12,
   },
-
   micIcon: {
     fontSize: 42,
     color: "#FFFFFF",
   },
-
   stopButton: {
     width: 110,
     height: 110,
@@ -293,12 +366,10 @@ const styles = StyleSheet.create({
     elevation: 6,
     marginBottom: 12,
   },
-
   stopIcon: {
     fontSize: 38,
     color: "#FFFFFF",
   },
-
   helperText: {
     fontSize: 16,
     color: "#2F5BD2",

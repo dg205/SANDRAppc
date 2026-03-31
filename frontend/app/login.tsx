@@ -10,12 +10,14 @@ export default function Login() {
       <TextInput placeholder="Username" style={styles.input} />
       <TextInput placeholder="Password" secureTextEntry style={styles.input} />
 
-      <TouchableOpacity onPress={() => router.push("/profile/age")}>
+      <TouchableOpacity onPress={() => router.push("/language")}>
         <Image
           source={require("../assets/logo.png")} // replace with your logo
           style={styles.logo}
         />
       </TouchableOpacity>
+
+
     </View>
   );
 }
@@ -26,6 +28,9 @@ const styles = StyleSheet.create({
     padding: 24,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#E4F0FF"
+
+
   },
   title: { fontSize: 28, marginBottom: 20 },
   input: {
