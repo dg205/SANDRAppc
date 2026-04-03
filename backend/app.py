@@ -278,66 +278,193 @@ _STOPWORDS = {
     'little','older','young','years','year','them','those','these',
 }
 
-_HOBBY_KW = {'gardening','garden','cook','cooking','baking','bake','read','reading',
-             'walk','walking','music','singing','sing','dance','dancing','paint',
-             'painting','knitting','knit','chess','golf','fish','fishing','hike',
-             'hiking','yoga','volunteer','volunteering','church','prayer','pray',
-             'sewing','sew','craft','crafting','crafts','puzzle','puzzles','movie',
-             'movies','travel','traveling','photography','sports','sport','running',
-             'run','cycling','cycle','swim','swimming','writing','write','draw',
-             'drawing','theater','history','crossword','exercise','exercising',
-             'game','gaming','book','books','arts'}
+_HOBBY_KW = {
+    # cooking & food
+    'cook','cooking','baking','bake','baked','kitchen','recipes','recipe',
+    'grilling','grill','barbecue','bbq','chef',
+    # reading & learning
+    'read','reading','books','book','library','studying','study','learning',
+    'writing','write','writer','journaling','journal','poetry','poems',
+    # outdoors & nature
+    'gardening','garden','gardener','plants','planting','hiking','hike','hiker',
+    'walking','walk','walks','nature','outdoors','camping','camp','fishing','fish',
+    'hunting','hunt','birdwatching','birds',
+    # music & arts
+    'music','singing','sing','singer','guitar','piano','drums','violin',
+    'dancing','dance','dancer','painting','paint','painter','drawing','draw',
+    'crafting','craft','crafts','knitting','knit','sewing','sew','quilting','quilt',
+    'photography','photos','sculpting','pottery','ceramics','theater','acting',
+    # sports & fitness
+    'golf','chess','yoga','swimming','swim','running','run','cycling','cycle',
+    'tennis','pickleball','bowling','basketball','baseball','football','soccer',
+    'sports','sport','exercise','exercising','workout','gym','fitness','pilates',
+    # faith & community
+    'church','prayer','pray','praying','volunteering','volunteer','volunteered',
+    'community','serving','ministry','bible','worship','mosque','synagogue','temple',
+    # entertainment & hobbies
+    'movies','movie','films','film','television','watching','gaming','games','game',
+    'puzzles','puzzle','crossword','sudoku','cards','dominoes','bingo','chess',
+    'travel','traveling','trips','trip','exploring','explore','cooking','arts',
+    # social
+    'socializing','socialize','dining','restaurants','coffee','cafes',
+    'conversation','talking','chatting',
+}
 
-_VALUE_KW = {'family','faith','honesty','honest','kindness','kind','respect',
-             'community','loyal','loyalty','patient','patience','compassion',
-             'generous','generosity','education','creativity','creative','wellness',
-             'integrity','service','spiritual','spirituality','friendship','friend',
-             'gratitude','grateful','love','loving','joyful','joy','trust',
-             'trustworthy','caring','care','humble','humility'}
+_VALUE_KW = {
+    'family','faith','honesty','honest','kindness','kind','respect','respectful',
+    'community','loyal','loyalty','patient','patience','compassion','compassionate',
+    'generous','generosity','education','creativity','creative','wellness',
+    'integrity','service','spiritual','spirituality','friendship','friend',
+    'gratitude','grateful','love','loving','joyful','joy','trust','trustworthy',
+    'caring','care','humble','humility','empathy','empathetic','dedicated',
+    'supportive','support','giving','helping','helping','sharing','responsibility',
+    'responsible','hardworking','hardwork','discipline','disciplined','fairness',
+    'justice','equality','moral','morals','ethical','values','religious',
+    'devout','devoted','commitment','committed','sincere','authentic',
+}
 
-_HELP_KW = {'ride','rides','driving','drive','groceries','grocery','technology',
-            'tech','errand','errands','cook','cooking','clean','cleaning','yard',
-            'laundry','appointment','appointments','phone','computer','shopping',
-            'shop','medication','medications','exercise','company','conversation',
-            'talk','lifting','transportation','delivery','repairs','repair'}
+_HELP_KW = {
+    'ride','rides','driving','drive','driver','transport','transportation',
+    'groceries','grocery','shopping','shop','errands','errand','cooking','cook',
+    'cleaning','clean','laundry','yard','yardwork','technology','tech',
+    'computer','phone','tablet','ipad','iphone','android','setup','internet',
+    'appointments','appointment','doctor','hospital','clinic','pharmacy',
+    'medication','medications','prescriptions','prescription','exercise',
+    'company','conversation','companionship','talking','assistance','assist',
+    'helping','help','lifting','moving','repairs','repair','handyman',
+    'delivery','mail','bills','paperwork','reading','translation',
+}
 
-_GOAL_KW = {'companionship','companion','friendship','friend','conversation','talk',
-            'activity','activities','mentor','mentorship','learning','learn','social',
-            'connection','connect','support','community','share','sharing','bond',
-            'bonding','meeting','meet','relationship','together','company'}
+_GOAL_KW = {
+    'companionship','companion','friendship','friend','friends','conversation',
+    'talk','talking','activity','activities','mentor','mentorship','mentoring',
+    'learning','learn','social','connection','connect','support','community',
+    'share','sharing','bond','bonding','meeting','meet','relationship',
+    'together','company','hanging','hangout','visits','visit','outings','outing',
+    'adventures','adventure','exploring','explore','helping','help','giving',
+    'purpose','meaningful','meaningful','exchange','cultural','wisdom',
+    'stories','storytelling','teaching','teach','guidance','inspire','inspired',
+}
 
-_KNOWN_CITIES = ['atlanta','marietta','decatur','smyrna','norcross','phoenix','tempe',
-                 'scottsdale','chicago','dallas','houston','boston','denver','seattle',
-                 'portland','miami','orlando','brooklyn','queens','manhattan','jersey',
-                 'austin','nashville','memphis','charlotte','raleigh']
+_KNOWN_CITIES = [
+    'atlanta','marietta','decatur','smyrna','norcross','phoenix','tempe',
+    'scottsdale','mesa','chandler','chicago','evanston','oak park','naperville',
+    'dallas','plano','fort worth','irving','houston','sugar land','pasadena',
+    'boston','denver','seattle','portland','miami','coral gables','hialeah',
+    'orlando','brooklyn','queens','manhattan','bronx','jersey','austin',
+    'nashville','memphis','charlotte','raleigh','kennesaw','sandy springs',
+    'roswell','alpharetta','dunwoody','stone mountain',
+]
 
 _FAITH_MAP = {
-    'christian':  {'christian','christianity','jesus','christ'},
-    'catholic':   {'catholic','mass','rosary'},
-    'baptist':    {'baptist'},
-    'methodist':  {'methodist'},
-    'jewish':     {'jewish','synagogue','torah','shabbat','hebrew'},
-    'muslim':     {'muslim','islam','mosque','quran'},
-    'buddhist':   {'buddhist','buddhism','meditation'},
-    'hindu':      {'hindu','hinduism'},
+    'christian':  {'christian','christianity','jesus','christ','lord','savior','gospel','grace'},
+    'catholic':   {'catholic','mass','rosary','vatican','pope','parish','saint','saints'},
+    'baptist':    {'baptist','congregation','revival','baptized','baptism'},
+    'methodist':  {'methodist','wesleyan'},
+    'jewish':     {'jewish','synagogue','torah','shabbat','hebrew','rabbi','passover','hanukkah','jewish'},
+    'muslim':     {'muslim','islam','islamic','mosque','quran','allah','prayer','ramadan','halal'},
+    'buddhist':   {'buddhist','buddhism','meditation','mindfulness','dharma','zen','monk'},
+    'hindu':      {'hindu','hinduism','temple','diwali','karma','mandir','vedic'},
+    'pentecostal':{'pentecostal','charismatic','holy spirit','spirit filled'},
+    'presbyterian':{'presbyterian'},
+    'lutheran':   {'lutheran'},
+    'episcopal':  {'episcopal','episcopal','anglica'},
 }
 
 _CULTURE_MAP = {
-    'mexican': ['mexican','mexico','hispanic','latina','latino'],
-    'colombian': ['colombian','colombia'],
-    'american': ['american'],
-    'korean': ['korean','korea'],
-    'chinese': ['chinese','china'],
-    'italian': ['italian','italy'],
-    'south asian': ['indian','south asian','desi','hindi'],
-    'eastern european': ['polish','russian','ukrainian','jewish'],
+    'mexican':          ['mexican','mexico','hispanic','latina','latino','chicano','aztec'],
+    'colombian':        ['colombian','colombia'],
+    'cuban':            ['cuban','cuba'],
+    'puerto rican':     ['puerto rican','puerto rico','boricua'],
+    'haitian':          ['haitian','haiti','creole'],
+    'vietnamese':       ['vietnamese','vietnam','viet'],
+    'chinese':          ['chinese','china','cantonese','mandarin','taiwanese'],
+    'korean':           ['korean','korea'],
+    'south asian':      ['indian','south asian','desi','hindi','bengali','pakistani','sri lankan'],
+    'italian':          ['italian','italy','sicilian'],
+    'eastern european': ['polish','russian','ukrainian','jewish','czech','hungarian','romanian'],
+    'american':         ['american'],
+    'caribbean':        ['caribbean','jamaican','trinidad','barbadian','bahamian'],
+    'middle eastern':   ['arabic','arab','lebanese','syrian','egyptian','persian','iranian'],
+    'african':          ['nigerian','ghanaian','ethiopian','kenyan','african'],
 }
+
+# ---------------------------------------------------------------------------
+# Phrase-level normalization — maps casual speech to canonical keywords
+# Applied BEFORE keyword extraction to expand coverage
+# ---------------------------------------------------------------------------
+_PHRASE_MAP = [
+    # hobbies / activities
+    (r'spend time in the kitchen',      'cooking'),
+    (r'love to cook|loves? cooking',    'cooking'),
+    (r'in the garden|love plants',      'gardening'),
+    (r'love to read|avid reader',       'reading'),
+    (r'go for walks?|take walks?',      'walking'),
+    (r'play chess',                     'chess'),
+    (r'play golf',                      'golf'),
+    (r'go fishing',                     'fishing'),
+    (r'work out|hit the gym',           'exercise'),
+    (r'watch movies?|watching films?',  'movies'),
+    (r'play cards?',                    'cards'),
+    (r'board games?',                   'gaming'),
+    # values
+    (r'helping others|help others',     'service volunteering'),
+    (r'giving back',                    'generosity service'),
+    (r'hard work|work hard',            'hardwork'),
+    (r'close.?knit family|family first','family'),
+    (r'my faith|my religion',           'faith spiritual'),
+    (r'care about people',              'caring compassion'),
+    # help needs
+    (r"can.?t drive|don.?t drive|no longer drive|stopped driving", 'rides transportation'),
+    (r'getting around|get around',      'rides transportation'),
+    (r'need a ride|need rides',         'rides'),
+    (r'trouble with technology|bad with tech', 'technology'),
+    (r'help with my phone',             'technology phone'),
+    (r'pick up groceries|grocery run',  'groceries'),
+    (r'doctor.?s? appointments?',       'appointments'),
+    (r'live alone|living alone|by myself|on my own', 'company companionship'),
+    # goals
+    (r'make friends?|new friends?',     'friendship'),
+    (r'not be lonely|less lonely|loneliness', 'companionship'),
+    (r'hang out|hangout|chill',         'hangout companionship'),
+    (r'someone to talk to',             'conversation companionship'),
+    (r'share stories|tell stories',     'storytelling sharing'),
+    (r'learn from',                     'learning mentorship'),
+    (r'pass on wisdom|share wisdom',    'mentorship wisdom'),
+    # family situation
+    (r'lost my (wife|husband|spouse)',  'widowed'),
+    (r'my (wife|husband) passed',       'widowed'),
+    (r'never married',                  'single'),
+    (r'live with my (kids?|children|son|daughter|family)', 'lives with family'),
+]
+
+def _apply_phrases(text: str) -> str:
+    """Expand casual phrases into canonical keywords before extraction."""
+    t = text.lower()
+    for pattern, replacement in _PHRASE_MAP:
+        t = re.sub(pattern, ' ' + replacement + ' ', t)
+    return t
+
+def _stem(word: str) -> str:
+    """Very lightweight suffix stripping to normalize verb forms."""
+    for suffix in ('ing','tion','ed','er','es','ly'):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+            return word[:-len(suffix)]
+    return word
 
 def _kw_extract(text, min_len=4):
     if not text:
         return []
+    text = _apply_phrases(text)
     tokens = re.findall(r'[a-z]{' + str(min_len) + r',}', text.lower())
-    return [t for t in tokens if t not in _STOPWORDS]
+    results = []
+    for t in tokens:
+        if t not in _STOPWORDS:
+            results.append(t)
+            stemmed = _stem(t)
+            if stemmed != t and stemmed not in _STOPWORDS:
+                results.append(stemmed)
+    return results
 
 def preprocess_profile(p):
     p = dict(p)
