@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert } from "react-native";
+import { useRef, useState, useEffect } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert, Animated } from "react-native";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 import { BASE_URL } from "../utils/api";
@@ -287,6 +287,40 @@ export default function MicrophoneRecorder({
 
   const active = recording !== null || isListening;
 
+  // -----------------------------
+  // AUDIO VISUALIZER BARS (visual only)
+  // -----------------------------
+  const BAR_COUNT = 7;
+  const barAnims = useRef(
+    Array.from({ length: BAR_COUNT }, () => new Animated.Value(0.3))
+  ).current;
+
+  useEffect(() => {
+    if (active) {
+      const animations = barAnims.map((anim, i) =>
+        Animated.loop(
+          Animated.sequence([
+            Animated.delay(i * 80),
+            Animated.timing(anim, {
+              toValue: 1,
+              duration: 300 + i * 40,
+              useNativeDriver: true,
+            }),
+            Animated.timing(anim, {
+              toValue: 0.2,
+              duration: 300 + i * 40,
+              useNativeDriver: true,
+            }),
+          ])
+        )
+      );
+      animations.forEach((a) => a.start());
+      return () => animations.forEach((a) => a.stop());
+    } else {
+      barAnims.forEach((anim) => anim.setValue(0.3));
+    }
+  }, [active]);
+
   return (
     <View style={styles.container}>
       {!active ? (
@@ -298,6 +332,19 @@ export default function MicrophoneRecorder({
         </>
       ) : (
         <>
+          {/* Animated waveform bars */}
+          <View style={styles.waveformContainer}>
+            {barAnims.map((anim, i) => (
+              <Animated.View
+                key={i}
+                style={[
+                  styles.bar,
+                  { transform: [{ scaleY: anim }] },
+                ]}
+              />
+            ))}
+          </View>
+
           <TouchableOpacity style={styles.stopButton} onPress={handleStop}>
             <Text style={styles.stopIcon}>⏹</Text>
           </TouchableOpacity>
@@ -369,5 +416,19 @@ const styles = StyleSheet.create({
   playText: {
     color: "#fff",
     fontWeight: "600",
+  },
+  waveformContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 60,
+    gap: 5,
+    marginBottom: 16,
+  },
+  bar: {
+    width: 5,
+    height: 50,
+    borderRadius: 4,
+    backgroundColor: "#E74C3C",
   },
 });
