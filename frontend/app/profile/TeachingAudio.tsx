@@ -149,13 +149,6 @@ export default function TeachingAudio() {
 
           <Text style={styles.talkHint}>Talk for 3 minutes</Text>
 
-          <View style={styles.transcriptionBox}>
-            <Text style={styles.transcriptionText}>
-              {liveText ||
-                recordedText ||
-                "Tap the microphone to start recording your answer"}
-            </Text>
-          </View>
 
           <View style={styles.buttonRow}>
             <TouchableOpacity
