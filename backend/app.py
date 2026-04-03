@@ -8,33 +8,50 @@ import pickle
 import re
 import tempfile
 import base64
+import threading
 import numpy as np
 import pandas as pd
 from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
 # ---------------------------------------------------------------------------
-# Whisper model (lazy-loaded on first transcription request)
+# Whisper model (lazy-loaded, thread-safe)
 # ---------------------------------------------------------------------------
 WHISPER_MODEL = None
+_whisper_lock = threading.Lock()
 
 def get_whisper_model():
     global WHISPER_MODEL
-    if WHISPER_MODEL is None:
-        import whisper
-        print("Loading Whisper model (first time only)...")
-        WHISPER_MODEL = whisper.load_model("base")
-        print("Whisper model ready.")
+    with _whisper_lock:
+        if WHISPER_MODEL is None:
+            import whisper
+            print("Loading Whisper model (first time only)...")
+            WHISPER_MODEL = whisper.load_model("base")
+            print("Whisper model ready.")
     return WHISPER_MODEL
 
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "candidates.db")
+# Use /data on Render (persistent disk) or local directory otherwise
+_BASE_DIR = os.environ.get("DATA_DIR", os.path.dirname(__file__))
+DB_PATH = os.path.join(_BASE_DIR, "candidates.db")
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "trained_model.pkl")
 SCALER_PATH = os.path.join(os.path.dirname(__file__), "scaler.pkl")
-AUDIO_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "AuidoRecordings")
+AUDIO_UPLOAD_DIR = os.path.join(_BASE_DIR, "AuidoRecordings")
 os.makedirs(AUDIO_UPLOAD_DIR, exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# Thread-safe DB helper with WAL mode enabled
+# ---------------------------------------------------------------------------
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL")   # allow concurrent reads + writes
+    conn.execute("PRAGMA synchronous=NORMAL") # faster writes, still safe
+    return conn
 
 # ---------------------------------------------------------------------------
 # Load ML model at startup
@@ -119,7 +136,7 @@ SEED_CANDIDATES = SENIOR_PROFILES + COMPANION_PROFILES
 # Database setup
 # ---------------------------------------------------------------------------
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute("""
         CREATE TABLE IF NOT EXISTS candidates (
@@ -140,7 +157,7 @@ def init_db():
     conn.close()
 
 def get_all_candidates():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute("SELECT profile FROM candidates")
     rows = c.fetchall()
@@ -628,7 +645,7 @@ def calculate_matches():
 @app.route("/api/users", methods=["GET"])
 def list_users():
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         c = conn.cursor()
         c.execute("SELECT id, name, profile FROM candidates")
         rows = c.fetchall()
@@ -650,7 +667,7 @@ def add_user():
         user_data = request.json or {}
         name = user_data.get("name", "Unknown")
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         c = conn.cursor()
         c.execute(
             "INSERT INTO candidates (name, profile) VALUES (?, ?)",
@@ -669,7 +686,7 @@ def add_user():
 def update_user(email):
     try:
         updates = request.json or {}
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         c = conn.cursor()
         c.execute("SELECT id, profile FROM candidates")
         rows = c.fetchall()
@@ -779,8 +796,10 @@ def transcribe_audio():
             os.unlink(tmp_path)
 
 # ---------------------------------------------------------------------------
-# Startup
+# Startup — init_db() runs on import so Gunicorn workers also initialize it
 # ---------------------------------------------------------------------------
+init_db()
+
 if __name__ == "__main__":
     init_db()
     print("\n" + "=" * 55)
@@ -795,4 +814,13 @@ if __name__ == "__main__":
     print("  PUT  /api/users/<email>       - Update user profile")
     print("  POST /api/transcribe          - Transcribe audio (Whisper)")
     print("=" * 55 + "\n")
-    app.run(host="0.0.0.0", debug=True, port=5000, use_reloader=False)
+
+    port = int(os.environ.get("PORT", 5000))
+
+    try:
+        from waitress import serve
+        print(f"Starting production server on port {port} (Waitress)...")
+        serve(app, host="0.0.0.0", port=port, threads=8)
+    except ImportError:
+        print("Waitress not found, falling back to Flask dev server...")
+        app.run(host="0.0.0.0", debug=False, port=port, threaded=True, use_reloader=False)
