@@ -7,3 +7,4 @@ scipy>=1.11.1
 gunicorn
 python-dotenv
 setuptools
+groq
