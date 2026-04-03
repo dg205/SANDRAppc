@@ -20,20 +20,21 @@ app = Flask(__name__)
 CORS(app)
 
 # ---------------------------------------------------------------------------
-# Whisper model (lazy-loaded, thread-safe)
+# Groq Whisper transcription (free tier, no PyTorch needed)
 # ---------------------------------------------------------------------------
-WHISPER_MODEL = None
-_whisper_lock = threading.Lock()
-
-def get_whisper_model():
-    global WHISPER_MODEL
-    with _whisper_lock:
-        if WHISPER_MODEL is None:
-            import whisper
-            print("Loading Whisper model (first time only)...")
-            WHISPER_MODEL = whisper.load_model("base")
-            print("Whisper model ready.")
-    return WHISPER_MODEL
+def transcribe_with_groq(audio_path):
+    from groq import Groq
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY not set")
+    client = Groq(api_key=api_key)
+    with open(audio_path, "rb") as f:
+        result = client.audio.transcriptions.create(
+            model="whisper-large-v3-turbo",
+            file=f,
+            language="en",
+        )
+    return result.text
 
 
 # Use /data on Render (persistent disk) or local directory otherwise
@@ -726,11 +727,6 @@ def transcribe_audio():
         print("[transcribe] files keys:", list(request.files.keys()))
         print("[transcribe] json present:", request.is_json)
 
-        try:
-            model = get_whisper_model()
-        except ImportError:
-            return jsonify({"error": "Whisper not available on this server. Use device microphone instead."}), 503
-
         # Preferred path: multipart/form-data file upload
         if "audio" in request.files:
             audio_file = request.files["audio"]
@@ -741,10 +737,8 @@ def transcribe_audio():
             final_name = f"{timestamp}_{original_name}"
             saved_audio_path = os.path.join(AUDIO_UPLOAD_DIR, final_name)
 
-            # Save permanent copy in backend/AuidoRecordings
             audio_file.save(saved_audio_path)
 
-            # Also create a temp copy for Whisper processing
             with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
                 tmp_path = tmp.name
 
@@ -765,25 +759,17 @@ def transcribe_audio():
             final_name = f"{timestamp}_recording.{fmt}"
             saved_audio_path = os.path.join(AUDIO_UPLOAD_DIR, final_name)
 
-            # Save permanent copy
             with open(saved_audio_path, "wb") as f:
                 f.write(audio_bytes)
 
-            # Temp copy for Whisper
             with tempfile.NamedTemporaryFile(suffix=f".{fmt}", delete=False) as tmp:
                 tmp_path = tmp.name
                 tmp.write(audio_bytes)
 
         print(f"[transcribe] saved audio: {saved_audio_path}")
-        print(f"[transcribe] temp file: {tmp_path}")
+        print(f"[transcribe] transcribing with Groq Whisper...")
 
-        result = model.transcribe(
-            tmp_path,
-            fp16=False,
-            language="en"
-        )
-
-        text = (result.get("text") or "").strip()
+        text = transcribe_with_groq(tmp_path).strip()
 
         return jsonify({
             "text": text,

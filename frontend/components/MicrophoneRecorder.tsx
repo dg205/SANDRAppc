@@ -2,10 +2,7 @@ import { useRef, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert } from "react-native";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
-import {
-  ExpoSpeechRecognitionModule,
-  useSpeechRecognitionEvent,
-} from "expo-speech-recognition";
+import { BASE_URL } from "../utils/api";
 
 type MicrophoneRecorderProps = {
   onPartialText?: (text: string) => void;
@@ -34,26 +31,7 @@ export default function MicrophoneRecorder({
   const latestTextRef = useRef("");
 
   // -----------------------------
-  // NATIVE SPEECH RECOGNITION EVENTS
-  // (hooks must be at top level — safe to call on all platforms)
-  // -----------------------------
-  useSpeechRecognitionEvent("result", (event) => {
-    if (Platform.OS === "web") return;
-    const transcript = event.results[0]?.transcript ?? "";
-    latestTextRef.current = transcript;
-    if (onPartialText) onPartialText(transcript);
-    if (event.isFinal) {
-      finalTextRef.current = transcript;
-    }
-  });
-
-  useSpeechRecognitionEvent("error", (event) => {
-    if (Platform.OS === "web") return;
-    console.warn("Speech recognition error:", event.error, event.message);
-  });
-
-  // -----------------------------
-  // WEB RECORDING (unchanged)
+  // WEB RECORDING
   // -----------------------------
   function startWebRecording() {
     const SR =
@@ -118,71 +96,80 @@ export default function MicrophoneRecorder({
 
   // -----------------------------
   // NATIVE RECORDING (iOS + Android)
-  // Uses device speech recognition — no backend needed
-  // Group member's Android audio settings preserved below
+  // Records audio then sends to Groq Whisper via backend for transcription
+  // Works in Expo Go on both platforms — no dev build needed
   // -----------------------------
   async function startNativeRecording() {
     try {
-      // Request microphone permission
       const permission = await Audio.requestPermissionsAsync();
       if (!permission.granted) {
         Alert.alert("Permission Required", "Microphone access is needed.");
         return;
       }
 
-      // Request speech recognition permission
-      const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      if (!granted) {
-        Alert.alert("Permission Required", "Speech recognition access is needed.");
-        return;
-      }
-
-      // Reset transcription text
-      finalTextRef.current = "";
-      latestTextRef.current = "";
-
-      // Start audio recording for saving (group member's Android settings preserved)
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
-        shouldDuckAndroid: true, // group member's Android setting — preserved
+        shouldDuckAndroid: true,
       });
 
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
+
       setRecording(recording);
-
-      // Start device speech recognition (Google on Android, Apple on iOS)
-      ExpoSpeechRecognitionModule.start({
-        lang: "en-US",
-        interimResults: true,
-        continuous: true,
-      });
-
-      setIsListening(true);
     } catch (err) {
       Alert.alert("Recording Error", String(err));
     }
   }
 
   async function stopNativeRecording() {
-    // Stop device speech recognition
-    ExpoSpeechRecognitionModule.stop();
-    setIsListening(false);
-
-    // Stop audio recording
     let uri: string | null = null;
+
     if (recording) {
       await recording.stopAndUnloadAsync();
       uri = recording.getURI();
       setRecording(null);
     }
 
-    // Use text from device speech recognition (no backend call needed)
-    const text = finalTextRef.current || latestTextRef.current;
+    let text = "";
+    let uploadedAudioPath: string | null = null;
 
-    if (onPartialText) onPartialText(text);
+    if (uri) {
+      try {
+        const formData = new FormData();
+
+        formData.append(
+          "audio",
+          {
+            uri,
+            name: "recording.m4a",
+            type: "audio/m4a",
+          } as any
+        );
+
+        const response = await fetch(`${BASE_URL}/api/transcribe`, {
+          method: "POST",
+          body: formData,
+        });
+
+        const raw = await response.text();
+        console.log("Transcribe status =", response.status);
+        console.log("Transcribe raw body =", raw);
+
+        if (!response.ok) {
+          throw new Error(`Transcription failed (${response.status}): ${raw}`);
+        }
+
+        const data = JSON.parse(raw);
+        text = data.text || "";
+        uploadedAudioPath = data.saved_audio_path || null;
+
+        if (onPartialText) onPartialText(text);
+      } catch (err) {
+        console.warn("Transcription/upload error:", err);
+      }
+    }
 
     const words = text
       .replace(/\n/g, " ")
@@ -223,13 +210,13 @@ export default function MicrophoneRecorder({
         text,
         csv: csvContent,
         csvUri: savedCsvPath,
-        uploadedAudioPath: null,
+        uploadedAudioPath,
       });
     }
   }
 
   // -----------------------------
-  // PLAYBACK (unchanged)
+  // PLAYBACK
   // -----------------------------
   async function playSavedAudio() {
     try {
@@ -280,7 +267,7 @@ export default function MicrophoneRecorder({
   }
 
   // -----------------------------
-  // HANDLERS (unchanged)
+  // HANDLERS
   // -----------------------------
   function handleStart() {
     if (Platform.OS === "web") {
