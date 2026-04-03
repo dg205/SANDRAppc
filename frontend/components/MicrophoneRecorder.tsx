@@ -6,6 +6,7 @@ import { BASE_URL } from "../utils/api";
 
 type MicrophoneRecorderProps = {
   onPartialText?: (text: string) => void;
+  onRecordingChange?: (isRecording: boolean) => void;
   onFinish?: (data: {
     audioUri: string | null;
     text: string;
@@ -17,6 +18,7 @@ type MicrophoneRecorderProps = {
 
 export default function MicrophoneRecorder({
   onPartialText,
+  onRecordingChange,
   onFinish,
 }: MicrophoneRecorderProps) {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
@@ -275,6 +277,7 @@ export default function MicrophoneRecorder({
     } else {
       startNativeRecording();
     }
+    onRecordingChange?.(true);
   }
 
   async function handleStop() {
@@ -283,6 +286,7 @@ export default function MicrophoneRecorder({
     } else {
       await stopNativeRecording();
     }
+    onRecordingChange?.(false);
   }
 
   const active = recording !== null || isListening;

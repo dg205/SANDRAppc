@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import csv; rows = list\\(csv.reader\\(open\\(r''C:\\\\Users\\\\dante\\\\SANDRAppc\\\\backend\\\\user_match_pairs_expanded_synthetic.csv''\\)\\)\\); print\\(''Rows:'', len\\(rows\\)\\); print\\(''Headers:'', rows[0]\\)\")",
+      "Bash(\"C:\\\\Users\\\\dante\\\\SANDRAppc\\\\frontend\\\\.env\")",
+      "Bash(npx expo:*)",
+      "Bash(npm install:*)",
+      "WebFetch(domain:sandrappc.onrender.com)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''backend/app.py''\\).read\\(\\)\\); print\\(''Syntax OK''\\)\")"
+    ]
+  }
+}
