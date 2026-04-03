@@ -1,10 +1,17 @@
 import { Platform } from "react-native";
 
-// CHANGE THIS to your computer's real local IP address
-const LAN_IP = "192.168.86.30";
+// Priority order:
+//  1. EXPO_PUBLIC_API_URL in your .env file (set this for production/cloud)
+//  2. Fallback to localhost for web, or LAN IP for Android/iOS dev
+const CLOUD_URL = process.env.EXPO_PUBLIC_API_URL;
 
-export const BASE_URL =
-  Platform.OS === "android"
+// Only needed for local development (not used when EXPO_PUBLIC_API_URL is set)
+const LAN_IP = process.env.EXPO_PUBLIC_LAN_IP || "192.168.86.30";
+
+export const BASE_URL: string =
+  CLOUD_URL
+    ? CLOUD_URL
+    : Platform.OS === "android" || Platform.OS === "ios"
     ? `http://${LAN_IP}:5000`
     : "http://127.0.0.1:5000";
 
