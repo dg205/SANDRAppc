@@ -726,7 +726,10 @@ def transcribe_audio():
         print("[transcribe] files keys:", list(request.files.keys()))
         print("[transcribe] json present:", request.is_json)
 
-        model = get_whisper_model()
+        try:
+            model = get_whisper_model()
+        except ImportError:
+            return jsonify({"error": "Whisper not available on this server. Use device microphone instead."}), 503
 
         # Preferred path: multipart/form-data file upload
         if "audio" in request.files:
