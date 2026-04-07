@@ -147,7 +147,7 @@ export default function GettingHelpAudio() {
             />
           </View>
 
-          <Text style={styles.talkHint}>Talk for 3 minutes</Text>
+          <Text style={styles.talkHint}>Take your time</Text>
 
 
           <View style={styles.buttonRow}>
