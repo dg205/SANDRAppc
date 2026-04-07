@@ -127,12 +127,11 @@ export default function Values() {
           <View style={styles.progressBarFill} />
         </View>
 
-        <Text style={styles.questionLabel}>Question 4 of 8: Values</Text>
+        <Text style={styles.questionLabel}>Question 4 of 8: What are things you value the most?</Text>
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-            What values matter most to you? Tell us about the beliefs,
-            principles, and qualities that guide your life.
+          What values matter most to you? Share the beliefs, principles, morals, or faith that guide your life and shape who you are.
           </Text>
 
           <View style={styles.recorderWrap}>
@@ -142,7 +141,7 @@ export default function Values() {
             />
           </View>
 
-          <Text style={styles.talkHint}>Talk for 3 minutes</Text>
+          <Text style={styles.talkHint}>Take your time</Text>
 
           <View style={styles.transcriptionBox}>
             <Text style={styles.transcriptionText}>
