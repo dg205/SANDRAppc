@@ -15,10 +15,9 @@ import { useProfile } from "./profileContext";
 
 export default function Values() {
   const { updateProfile } = useProfile();
-  const [liveText, setLiveText] = useState("");
-  const [recordedText, setRecordedText] = useState("");
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [csvText, setCsvText] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
 
   const handleFinish = async ({
     audioUri,
@@ -29,10 +28,9 @@ export default function Values() {
     text: string;
     csv: string;
   }) => {
-    setLiveText("");
-    setRecordedText(text);
     setAudioUri(audioUri);
     setCsvText(csv);
+    setConfirmed(true);
     updateProfile({ valuesText: text, valuesAudioUri: audioUri });
 
     if (Platform.OS !== "web") {
@@ -127,29 +125,28 @@ export default function Values() {
           <View style={styles.progressBarFill} />
         </View>
 
-        <Text style={styles.questionLabel}>Question 4 of 8: What are things you value the most?</Text>
+        <Text style={styles.questionLabel}>
+          Question 4 of 8: What are things you value the most?
+        </Text>
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-          What values matter most to you? Share the beliefs, principles, morals, or faith that guide your life and shape who you are.
+            What values matter most to you? Share the beliefs, principles,
+            morals, or faith that guide your life and shape who you are.
           </Text>
 
           <View style={styles.recorderWrap}>
             <MicrophoneRecorder
               onFinish={handleFinish}
-              onPartialText={(partial) => setLiveText(partial)}
+              onRecordingChange={(isRecording) => {
+                if (isRecording) {
+                  setConfirmed(false);
+                }
+              }}
             />
           </View>
 
-          <Text style={styles.talkHint}>Take your time</Text>
-
-          <View style={styles.transcriptionBox}>
-            <Text style={styles.transcriptionText}>
-              {liveText ||
-                recordedText ||
-                "Tap the microphone to start recording your answer"}
-            </Text>
-          </View>
+          <Text style={styles.talkHint}>Take as much time as you need</Text>
 
           <View style={styles.buttonRow}>
             <TouchableOpacity
@@ -160,7 +157,11 @@ export default function Values() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.nextButton}
+              style={[
+                styles.nextButton,
+                !confirmed && styles.nextButtonDisabled,
+              ]}
+              disabled={!confirmed}
               onPress={() => router.push("/profile/bioaudio")}
             >
               <Text style={styles.nextButtonText}>Next →</Text>
@@ -170,11 +171,11 @@ export default function Values() {
 
         <View style={styles.noteBox}>
           <Text style={styles.noteText}>
-            💡 You can skip any question by pressing &quot;Next&quot;
+            Review your response, then tap &quot;Confirm&quot; to continue.
           </Text>
         </View>
 
-        {Platform.OS === "web" && recordedText !== "" && (
+        {Platform.OS === "web" && confirmed && (
           <View style={styles.webButtonsWrap}>
             {audioUri && (
               <TouchableOpacity
@@ -257,7 +258,7 @@ const styles = StyleSheet.create({
   },
 
   progressBarFill: {
-    width: "50%", // Question 4 of 8
+    width: "50%",
     height: "100%",
     backgroundColor: "#2F80ED",
     borderRadius: 999,
@@ -267,6 +268,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#666",
     marginBottom: 18,
+    textAlign: "center",
   },
 
   card: {
@@ -291,6 +293,7 @@ const styles = StyleSheet.create({
   },
 
   recorderWrap: {
+    width: "100%",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
@@ -300,25 +303,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: "#2F5BD2",
     marginBottom: 20,
-  },
-
-  transcriptionBox: {
-    width: "100%",
-    minHeight: 56,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#B7CBF5",
-    backgroundColor: "#F4F8FF",
-    justifyContent: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 26,
-  },
-
-  transcriptionText: {
     textAlign: "center",
-    color: "#6B7280",
-    fontSize: 15,
   },
 
   buttonRow: {
@@ -326,6 +311,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 12,
+    marginTop: 10,
   },
 
   backButton: {
@@ -354,6 +340,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 3,
+  },
+
+  nextButtonDisabled: {
+    backgroundColor: "#9CA3AF",
+    shadowOpacity: 0,
   },
 
   nextButtonText: {

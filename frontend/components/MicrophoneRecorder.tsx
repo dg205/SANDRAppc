@@ -1,19 +1,29 @@
 import { useRef, useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert, Animated } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+  Alert,
+  Animated,
+} from "react-native";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 import { BASE_URL } from "../utils/api";
 
+type RecorderFinishData = {
+  audioUri: string | null;
+  text: string;
+  csv: string;
+  csvUri: string | null;
+  uploadedAudioPath?: string | null;
+};
+
 type MicrophoneRecorderProps = {
   onPartialText?: (text: string) => void;
   onRecordingChange?: (isRecording: boolean) => void;
-  onFinish?: (data: {
-    audioUri: string | null;
-    text: string;
-    csv: string;
-    csvUri: string | null;
-    uploadedAudioPath?: string | null;
-  }) => void;
+  onFinish?: (data: RecorderFinishData) => void;
 };
 
 export default function MicrophoneRecorder({
@@ -27,6 +37,12 @@ export default function MicrophoneRecorder({
   const [savedAudioUri, setSavedAudioUri] = useState<string | null>(null);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  const [transcription, setTranscription] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [pendingResult, setPendingResult] = useState<RecorderFinishData | null>(
+    null
+  );
 
   const recognitionRef = useRef<any>(null);
   const finalTextRef = useRef("");
@@ -49,6 +65,9 @@ export default function MicrophoneRecorder({
 
     finalTextRef.current = "";
     latestTextRef.current = "";
+    setTranscription("");
+    setConfirmed(false);
+    setPendingResult(null);
 
     const recognition = new SR();
     recognition.interimResults = true;
@@ -62,6 +81,9 @@ export default function MicrophoneRecorder({
       }
 
       latestTextRef.current = transcript;
+      setTranscription(transcript);
+      setConfirmed(false);
+
       if (onPartialText) onPartialText(transcript);
 
       if (event.results[event.results.length - 1].isFinal) {
@@ -93,13 +115,32 @@ export default function MicrophoneRecorder({
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }
+
     setIsListening(false);
+
+    const text = (latestTextRef.current || finalTextRef.current || "").trim();
+
+    const words = text
+      .replace(/\n/g, " ")
+      .split(" ")
+      .map((w: string) => w.trim())
+      .filter(Boolean);
+
+    const csvContent = ["word", ...words].join("\n");
+
+    setTranscription(text);
+    setConfirmed(false);
+    setPendingResult({
+      audioUri: null,
+      text,
+      csv: csvContent,
+      csvUri: null,
+      uploadedAudioPath: null,
+    });
   }
 
   // -----------------------------
   // NATIVE RECORDING (iOS + Android)
-  // Records audio then sends to Groq Whisper via backend for transcription
-  // Works in Expo Go on both platforms — no dev build needed
   // -----------------------------
   async function startNativeRecording() {
     try {
@@ -108,6 +149,10 @@ export default function MicrophoneRecorder({
         Alert.alert("Permission Required", "Microphone access is needed.");
         return;
       }
+
+      setTranscription("");
+      setConfirmed(false);
+      setPendingResult(null);
 
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
@@ -167,6 +212,9 @@ export default function MicrophoneRecorder({
         text = data.text || "";
         uploadedAudioPath = data.saved_audio_path || null;
 
+        setTranscription(text);
+        setConfirmed(false);
+
         if (onPartialText) onPartialText(text);
       } catch (err) {
         console.warn("Transcription/upload error:", err);
@@ -206,15 +254,13 @@ export default function MicrophoneRecorder({
       });
     }
 
-    if (onFinish) {
-      onFinish({
-        audioUri: savedAudioPath || uri,
-        text,
-        csv: csvContent,
-        csvUri: savedCsvPath,
-        uploadedAudioPath,
-      });
-    }
+    setPendingResult({
+      audioUri: savedAudioPath || uri,
+      text,
+      csv: csvContent,
+      csvUri: savedCsvPath,
+      uploadedAudioPath,
+    });
   }
 
   // -----------------------------
@@ -289,10 +335,30 @@ export default function MicrophoneRecorder({
     onRecordingChange?.(false);
   }
 
+  function handleConfirm() {
+    if (!pendingResult) return;
+
+    setConfirmed(true);
+
+    onFinish?.({
+      ...pendingResult,
+      text: transcription,
+      csv:
+        transcription.trim().length > 0
+          ? ["word", ...transcription
+              .replace(/\n/g, " ")
+              .split(" ")
+              .map((w) => w.trim())
+              .filter(Boolean),
+            ].join("\n")
+          : pendingResult.csv,
+    });
+  }
+
   const active = recording !== null || isListening;
 
   // -----------------------------
-  // AUDIO VISUALIZER BARS (visual only)
+  // AUDIO VISUALIZER BARS
   // -----------------------------
   const BAR_COUNT = 7;
   const barAnims = useRef(
@@ -323,7 +389,15 @@ export default function MicrophoneRecorder({
     } else {
       barAnims.forEach((anim) => anim.setValue(0.3));
     }
-  }, [active]);
+  }, [active, barAnims]);
+
+  useEffect(() => {
+    return () => {
+      if (sound) {
+        sound.unloadAsync();
+      }
+    };
+  }, [sound]);
 
   return (
     <View style={styles.container}>
@@ -336,15 +410,11 @@ export default function MicrophoneRecorder({
         </>
       ) : (
         <>
-          {/* Animated waveform bars */}
           <View style={styles.waveformContainer}>
             {barAnims.map((anim, i) => (
               <Animated.View
                 key={i}
-                style={[
-                  styles.bar,
-                  { transform: [{ scaleY: anim }] },
-                ]}
+                style={[styles.bar, { transform: [{ scaleY: anim }] }]}
               />
             ))}
           </View>
@@ -367,12 +437,33 @@ export default function MicrophoneRecorder({
           <Text style={styles.playText}>⏹ Stop Audio</Text>
         </TouchableOpacity>
       )}
+
+      <View style={styles.transcriptionBox}>
+        <Text style={styles.transcriptionText}>
+          {transcription || "Tap the microphone to start recording your answer"}
+        </Text>
+      </View>
+
+      {pendingResult && transcription.trim() !== "" && (
+        <TouchableOpacity
+          style={[
+            styles.confirmButton,
+            confirmed && styles.confirmButtonDone,
+          ]}
+          onPress={handleConfirm}
+        >
+          <Text style={styles.confirmButtonText}>
+            {confirmed ? "Confirmed ✓" : "Confirm"}
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    width: "100%",
     alignItems: "center",
     justifyContent: "center",
     marginTop: 10,
@@ -434,5 +525,38 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 4,
     backgroundColor: "#E74C3C",
+  },
+  transcriptionBox: {
+    width: "100%",
+    minHeight: 56,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#B7CBF5",
+    backgroundColor: "#F4F8FF",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 20,
+  },
+  transcriptionText: {
+    textAlign: "center",
+    color: "#6B7280",
+    fontSize: 15,
+  },
+  confirmButton: {
+    width: "100%",
+    backgroundColor: "#10B981",
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  confirmButtonDone: {
+    backgroundColor: "#059669",
+  },
+  confirmButtonText: {
+    fontSize: 18,
+    color: "#FFFFFF",
+    fontWeight: "600",
   },
 });
