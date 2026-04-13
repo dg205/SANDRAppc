@@ -7,6 +7,7 @@ import {
   Platform,
   Alert,
   Animated,
+  ActivityIndicator,
 } from "react-native";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
@@ -33,6 +34,7 @@ export default function MicrophoneRecorder({
 }: MicrophoneRecorderProps) {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const [savedAudioUri, setSavedAudioUri] = useState<string | null>(null);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
@@ -40,13 +42,32 @@ export default function MicrophoneRecorder({
 
   const [transcription, setTranscription] = useState("");
   const [confirmed, setConfirmed] = useState(false);
-  const [pendingResult, setPendingResult] = useState<RecorderFinishData | null>(
-    null
-  );
+  const [pendingResult, setPendingResult] = useState<RecorderFinishData | null>(null);
 
   const recognitionRef = useRef<any>(null);
   const finalTextRef = useRef("");
   const latestTextRef = useRef("");
+
+  const active = recording !== null || isListening;
+
+  function buildCsv(text: string) {
+    const words = text
+      .replace(/\n/g, " ")
+      .split(" ")
+      .map((w) => w.trim())
+      .filter(Boolean);
+
+    return ["word", ...words].join("\n");
+  }
+
+  function resetStateForNewRecording() {
+    finalTextRef.current = "";
+    latestTextRef.current = "";
+    setTranscription("");
+    setConfirmed(false);
+    setPendingResult(null);
+    setSavedAudioUri(null);
+  }
 
   // -----------------------------
   // WEB RECORDING
@@ -63,11 +84,7 @@ export default function MicrophoneRecorder({
       return;
     }
 
-    finalTextRef.current = "";
-    latestTextRef.current = "";
-    setTranscription("");
-    setConfirmed(false);
-    setPendingResult(null);
+    resetStateForNewRecording();
 
     const recognition = new SR();
     recognition.interimResults = true;
@@ -76,6 +93,7 @@ export default function MicrophoneRecorder({
 
     recognition.onresult = (event: any) => {
       let transcript = "";
+
       for (let i = 0; i < event.results.length; i++) {
         transcript += event.results[i][0].transcript;
       }
@@ -83,10 +101,9 @@ export default function MicrophoneRecorder({
       latestTextRef.current = transcript;
       setTranscription(transcript);
       setConfirmed(false);
+      onPartialText?.(transcript);
 
-      if (onPartialText) onPartialText(transcript);
-
-      if (event.results[event.results.length - 1].isFinal) {
+      if (event.results[event.results.length - 1]?.isFinal) {
         finalTextRef.current = transcript;
       }
     };
@@ -119,17 +136,11 @@ export default function MicrophoneRecorder({
     setIsListening(false);
 
     const text = (latestTextRef.current || finalTextRef.current || "").trim();
-
-    const words = text
-      .replace(/\n/g, " ")
-      .split(" ")
-      .map((w: string) => w.trim())
-      .filter(Boolean);
-
-    const csvContent = ["word", ...words].join("\n");
+    const csvContent = buildCsv(text);
 
     setTranscription(text);
     setConfirmed(false);
+
     setPendingResult({
       audioUri: null,
       text,
@@ -140,104 +151,87 @@ export default function MicrophoneRecorder({
   }
 
   // -----------------------------
-  // NATIVE RECORDING (iOS + Android)
+  // NATIVE RECORDING
   // -----------------------------
   async function startNativeRecording() {
     try {
       const permission = await Audio.requestPermissionsAsync();
+
       if (!permission.granted) {
         Alert.alert("Permission Required", "Microphone access is needed.");
         return;
       }
 
-      setTranscription("");
-      setConfirmed(false);
-      setPendingResult(null);
+      resetStateForNewRecording();
+
+      if (sound) {
+        await sound.unloadAsync();
+        setSound(null);
+        setIsPlaying(false);
+      }
 
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
         shouldDuckAndroid: true,
+        staysActiveInBackground: false,
+        playThroughEarpieceAndroid: false,
       });
 
-      const { recording } = await Audio.Recording.createAsync(
+      const { recording: newRecording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
 
-      setRecording(recording);
+      setRecording(newRecording);
     } catch (err) {
       Alert.alert("Recording Error", String(err));
     }
   }
 
   async function stopNativeRecording() {
+    if (!recording) return;
+
+    setIsProcessing(true);
+
     let uri: string | null = null;
 
-    if (recording) {
+    try {
       await recording.stopAndUnloadAsync();
       uri = recording.getURI();
+    } catch (err) {
+      console.warn("Failed to stop recording:", err);
+      Alert.alert("Recording Error", "Could not stop recording properly.");
+    } finally {
       setRecording(null);
-    }
 
-    let text = "";
-    let uploadedAudioPath: string | null = null;
-
-    if (uri) {
       try {
-        const formData = new FormData();
-
-        formData.append(
-          "audio",
-          {
-            uri,
-            name: "recording.m4a",
-            type: "audio/m4a",
-          } as any
-        );
-
-        const response = await fetch(`${BASE_URL}/api/transcribe`, {
-          method: "POST",
-          body: formData,
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          staysActiveInBackground: false,
+          playThroughEarpieceAndroid: false,
         });
-
-        const raw = await response.text();
-        console.log("Transcribe status =", response.status);
-        console.log("Transcribe raw body =", raw);
-
-        if (!response.ok) {
-          throw new Error(`Transcription failed (${response.status}): ${raw}`);
-        }
-
-        const data = JSON.parse(raw);
-        text = data.text || "";
-        uploadedAudioPath = data.saved_audio_path || null;
-
-        setTranscription(text);
-        setConfirmed(false);
-
-        if (onPartialText) onPartialText(text);
-      } catch (err) {
-        console.warn("Transcription/upload error:", err);
+      } catch (modeErr) {
+        console.warn("Audio mode reset error:", modeErr);
       }
     }
 
-    const words = text
-      .replace(/\n/g, " ")
-      .split(" ")
-      .map((w: string) => w.trim())
-      .filter(Boolean);
-
-    const csvContent = ["word", ...words].join("\n");
+    if (!uri) {
+      setIsProcessing(false);
+      return;
+    }
 
     let savedAudioPath: string | null = null;
     let savedCsvPath: string | null = null;
 
-    if (uri) {
+    try {
       const folder = FileSystem.documentDirectory + "recordings/";
       await FileSystem.makeDirectoryAsync(folder, { intermediates: true });
 
-      const audioFilename = `audio_${Date.now()}.m4a`;
-      savedAudioPath = folder + audioFilename;
+      const timestamp = Date.now();
+      savedAudioPath = `${folder}audio_${timestamp}.m4a`;
+      savedCsvPath = `${folder}transcript_${timestamp}.csv`;
 
       await FileSystem.copyAsync({
         from: uri,
@@ -246,21 +240,89 @@ export default function MicrophoneRecorder({
 
       setSavedAudioUri(savedAudioPath);
 
-      const csvFilename = `transcript_${Date.now()}.csv`;
-      savedCsvPath = folder + csvFilename;
-
-      await FileSystem.writeAsStringAsync(savedCsvPath, csvContent, {
+      const emptyCsv = buildCsv("");
+      await FileSystem.writeAsStringAsync(savedCsvPath, emptyCsv, {
         encoding: FileSystem.EncodingType.UTF8,
       });
+    } catch (err) {
+      console.warn("Local save error:", err);
     }
 
-    setPendingResult({
+    // IMPORTANT:
+    // Create pendingResult immediately so Confirm button appears on mobile.
+    const immediateResult: RecorderFinishData = {
       audioUri: savedAudioPath || uri,
-      text,
-      csv: csvContent,
+      text: "",
+      csv: buildCsv(""),
       csvUri: savedCsvPath,
-      uploadedAudioPath,
-    });
+      uploadedAudioPath: null,
+    };
+
+    setPendingResult(immediateResult);
+    setConfirmed(false);
+
+    // Continue transcription in background of this function
+    try {
+      const formData = new FormData();
+
+      formData.append(
+        "audio",
+        {
+          uri,
+          name: "recording.m4a",
+          type: "audio/m4a",
+        } as any
+      );
+
+      const response = await fetch(`${BASE_URL}/api/transcribe`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const raw = await response.text();
+      console.log("Transcribe status =", response.status);
+      console.log("Transcribe raw body =", raw);
+
+      if (!response.ok) {
+        throw new Error(`Transcription failed (${response.status}): ${raw}`);
+      }
+
+      const data = JSON.parse(raw);
+      const text = (data.text || "").trim();
+      const uploadedAudioPath = data.saved_audio_path || null;
+      const csvContent = buildCsv(text);
+
+      setTranscription(text);
+      onPartialText?.(text);
+
+      if (savedCsvPath) {
+        try {
+          await FileSystem.writeAsStringAsync(savedCsvPath, csvContent, {
+            encoding: FileSystem.EncodingType.UTF8,
+          });
+        } catch (csvErr) {
+          console.warn("CSV rewrite error:", csvErr);
+        }
+      }
+
+      setPendingResult({
+        audioUri: savedAudioPath || uri,
+        text,
+        csv: csvContent,
+        csvUri: savedCsvPath,
+        uploadedAudioPath,
+      });
+    } catch (err) {
+      console.warn("Transcription/upload error:", err);
+
+      // Keep pendingResult so the confirm button still shows
+      Alert.alert(
+        "Transcription Issue",
+        "Recording was saved, but transcription could not be completed. You can still confirm and continue."
+      );
+    } finally {
+      setIsProcessing(false);
+    }
   }
 
   // -----------------------------
@@ -268,7 +330,9 @@ export default function MicrophoneRecorder({
   // -----------------------------
   async function playSavedAudio() {
     try {
-      if (!savedAudioUri) {
+      const audioToPlay = savedAudioUri || pendingResult?.audioUri;
+
+      if (!audioToPlay) {
         Alert.alert("No Audio", "Record audio first.");
         return;
       }
@@ -282,10 +346,12 @@ export default function MicrophoneRecorder({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
         shouldDuckAndroid: true,
+        staysActiveInBackground: false,
+        playThroughEarpieceAndroid: false,
       });
 
       const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: savedAudioUri },
+        { uri: audioToPlay },
         { shouldPlay: true }
       );
 
@@ -318,11 +384,14 @@ export default function MicrophoneRecorder({
   // HANDLERS
   // -----------------------------
   function handleStart() {
+    if (isProcessing || active) return;
+
     if (Platform.OS === "web") {
       startWebRecording();
     } else {
       startNativeRecording();
     }
+
     onRecordingChange?.(true);
   }
 
@@ -332,33 +401,30 @@ export default function MicrophoneRecorder({
     } else {
       await stopNativeRecording();
     }
+
     onRecordingChange?.(false);
   }
 
   function handleConfirm() {
     if (!pendingResult) return;
 
+    const finalText = transcription.trim() || pendingResult.text || "";
+    const finalCsv = buildCsv(finalText);
+
+    const finalPayload: RecorderFinishData = {
+      ...pendingResult,
+      text: finalText,
+      csv: finalCsv,
+    };
+
+    setPendingResult(finalPayload);
     setConfirmed(true);
 
-    onFinish?.({
-      ...pendingResult,
-      text: transcription,
-      csv:
-        transcription.trim().length > 0
-          ? ["word", ...transcription
-              .replace(/\n/g, " ")
-              .split(" ")
-              .map((w) => w.trim())
-              .filter(Boolean),
-            ].join("\n")
-          : pendingResult.csv,
-    });
+    onFinish?.(finalPayload);
   }
 
-  const active = recording !== null || isListening;
-
   // -----------------------------
-  // AUDIO VISUALIZER BARS
+  // VISUALIZER
   // -----------------------------
   const BAR_COUNT = 7;
   const barAnims = useRef(
@@ -384,6 +450,7 @@ export default function MicrophoneRecorder({
           ])
         )
       );
+
       animations.forEach((a) => a.start());
       return () => animations.forEach((a) => a.stop());
     } else {
@@ -403,10 +470,21 @@ export default function MicrophoneRecorder({
     <View style={styles.container}>
       {!active ? (
         <>
-          <TouchableOpacity style={styles.micButton} onPress={handleStart}>
-            <Text style={styles.micIcon}>🎤</Text>
+          <TouchableOpacity
+            style={[styles.micButton, isProcessing && styles.disabledButton]}
+            onPress={handleStart}
+            disabled={isProcessing}
+          >
+            {isProcessing ? (
+              <ActivityIndicator size="large" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.micIcon}>🎤</Text>
+            )}
           </TouchableOpacity>
-          <Text style={styles.helperText}>Tap to start recording</Text>
+
+          <Text style={styles.helperText}>
+            {isProcessing ? "Processing recording..." : "Tap to start recording"}
+          </Text>
         </>
       ) : (
         <>
@@ -422,11 +500,12 @@ export default function MicrophoneRecorder({
           <TouchableOpacity style={styles.stopButton} onPress={handleStop}>
             <Text style={styles.stopIcon}>⏹</Text>
           </TouchableOpacity>
+
           <Text style={styles.helperText}>Tap to stop recording</Text>
         </>
       )}
 
-      {savedAudioUri && !isPlaying && (
+      {!!(savedAudioUri || pendingResult?.audioUri) && !isPlaying && !active && (
         <TouchableOpacity style={styles.playButton} onPress={playSavedAudio}>
           <Text style={styles.playText}>▶ Play Saved Audio</Text>
         </TouchableOpacity>
@@ -440,17 +519,18 @@ export default function MicrophoneRecorder({
 
       <View style={styles.transcriptionBox}>
         <Text style={styles.transcriptionText}>
-          {transcription || "Tap the microphone to start recording your answer"}
+          {transcription || pendingResult?.text || "Tap the microphone to start recording your answer"}
         </Text>
       </View>
 
-      {pendingResult && transcription.trim() !== "" && (
+      {pendingResult && !active && (
         <TouchableOpacity
           style={[
             styles.confirmButton,
             confirmed && styles.confirmButtonDone,
           ]}
           onPress={handleConfirm}
+          activeOpacity={0.8}
         >
           <Text style={styles.confirmButtonText}>
             {confirmed ? "Confirmed ✓" : "Confirm"}
@@ -477,6 +557,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     elevation: 6,
     marginBottom: 12,
+  },
+  disabledButton: {
+    opacity: 0.7,
   },
   micIcon: {
     fontSize: 42,

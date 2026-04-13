@@ -25,13 +25,22 @@ export default function Finish() {
       if (!res.ok) throw new Error(`Match request failed (${res.status})`);
       const result = await res.json();
 
-      // Flatten nested candidate data so MatchResults can access .name/.age/.location directly
-      const flattened = (result.matches ?? []).map((m: any) => ({
-        name:     m.candidate?.name     ?? "Unknown",
-        age:      m.candidate?.age      ?? 0,
-        location: m.candidate?.location ?? "",
-        userType: m.candidate?.userType ?? "",
-        score:    m.score               ?? 0,
+      // Preserve full candidate + features payload for MatchResults
+      const matchesWithFullData = (result.matches ?? []).map((m: any) => ({
+        ...m,
+        candidate: {
+          ...(m.candidate ?? {}),
+          name: m.candidate?.name ?? "Unknown",
+          age: m.candidate?.age ?? 0,
+          location: m.candidate?.location ?? "",
+          userType: m.candidate?.userType ?? "",
+        },
+        features: {
+          ...(m.features ?? {}),
+          shared_interests: m.features?.shared_interests ?? [],
+          shared_values: m.features?.shared_values ?? [],
+          shared_languages: m.features?.shared_languages ?? [],
+        },
       }));
 
       // Persist session so dashboard + edit profile can read it later
@@ -42,7 +51,10 @@ export default function Finish() {
       // Pass matches + user's name to MatchResults screen
       router.push({
         pathname: "/profile/MatchResults",
-        params: { matches: JSON.stringify(flattened), userName },
+        params: {
+          matches: JSON.stringify(matchesWithFullData),
+          userName,
+        },
       });
     } catch (err: any) {
       Alert.alert(

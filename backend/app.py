@@ -714,6 +714,14 @@ def compute_match_score(senior, companion):
 
 def build_feature_breakdown(senior, companion):
     f = derive_ml_features(senior, companion)
+
+    senior_interests = _set(senior, "interests")
+    companion_interests = _set(companion, "interests")
+    senior_values = _set(senior, "values")
+    companion_values = _set(companion, "values")
+    senior_languages = _set(senior, "languages")
+    companion_languages = _set(companion, "languages")
+
     return {
         "age_diff": f["age_diff"],
         "same_city": f["same_city"],
@@ -723,6 +731,9 @@ def build_feature_breakdown(senior, companion):
         "tech_compatible": f["tech_compatibility"],
         "shared_faith": f["same_religion"],
         "age_gap_appropriate": f["same_mobility"],
+        "shared_interests": sorted(list(senior_interests & companion_interests)),
+        "shared_values": sorted(list(senior_values & companion_values)),
+        "shared_languages": sorted(list(senior_languages & companion_languages)),
     }
 
 # ---------------------------------------------------------------------------
