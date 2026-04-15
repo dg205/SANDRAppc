@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -9,12 +9,36 @@ import {
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 
+type RawMatch = {
+  name?: string;
+  age?: number;
+  location?: string;
+  score?: number;
+  userType?: string;
+  candidate?: {
+    name?: string;
+    age?: number;
+    location?: string;
+    userType?: string;
+  };
+  features?: {
+    shared_interests?: string[];
+    shared_values?: string[];
+    shared_languages?: string[];
+    [key: string]: any;
+  };
+  [key: string]: any;
+};
+
 type Match = {
   name: string;
   age: number;
   location: string;
   score: number;
   userType?: string;
+  candidate?: RawMatch["candidate"];
+  features?: RawMatch["features"];
+  [key: string]: any;
 };
 
 export default function MatchResults() {
@@ -23,8 +47,20 @@ export default function MatchResults() {
     userName?: string;
   }>();
 
-  const allMatches: Match[] = matchesParam ? JSON.parse(matchesParam) : [];
-  const topMatches   = allMatches.slice(0, 3);
+  const allMatches: Match[] = useMemo(() => {
+    const parsed: RawMatch[] = matchesParam ? JSON.parse(matchesParam) : [];
+
+    return parsed.map((m) => ({
+      ...m,
+      name: m.name ?? m.candidate?.name ?? "Unknown",
+      age: m.age ?? m.candidate?.age ?? 0,
+      location: m.location ?? m.candidate?.location ?? "",
+      score: m.score ?? 0,
+      userType: m.userType ?? m.candidate?.userType ?? "",
+    }));
+  }, [matchesParam]);
+
+  const topMatches = allMatches.slice(0, 3);
   const otherMatches = allMatches.slice(3);
 
   const [showOthers, setShowOthers] = useState(false);
@@ -35,61 +71,110 @@ export default function MatchResults() {
     return "#E74C3C";
   };
 
-  const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
+  const cap = (s: string) =>
+    s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+
+  const openMatchProfile = (match: Match, index: number) => {
+    router.push({
+      pathname: "/profile/MatchProfile",
+      params: {
+        match: JSON.stringify(match),
+        matchIndex: String(index),
+        matches: matchesParam ?? "[]",
+        userName: userName ?? "",
+      },
+    });
+  };
 
   const FullCard = ({ match, index }: { match: Match; index: number }) => (
-    <View style={styles.matchCard}>
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={() => openMatchProfile(match, index)}
+      style={styles.matchCard}
+    >
       <View style={styles.matchHeader}>
         <Text style={styles.matchName}>{match.name}</Text>
-        <View style={[styles.scoreBadge, { backgroundColor: getScoreColor(match.score) }]}>
+        <View
+          style={[
+            styles.scoreBadge,
+            { backgroundColor: getScoreColor(match.score) },
+          ]}
+        >
           <Text style={styles.scoreText}>{match.score}%</Text>
         </View>
       </View>
+
       <Text style={styles.matchDetail}>Age: {match.age}</Text>
       <Text style={styles.matchDetail}>{cap(match.location)}</Text>
+
       {match.userType && (
         <Text style={styles.matchType}>
           {match.userType === "senior" ? "Senior" : "Young Companion"}
         </Text>
       )}
+
       <View style={styles.scoreBar}>
         <View
           style={[
             styles.scoreBarFill,
-            { width: `${match.score}%` as any, backgroundColor: getScoreColor(match.score) },
+            {
+              width: `${match.score}%` as any,
+              backgroundColor: getScoreColor(match.score),
+            },
           ]}
         />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
-  const MiniCard = ({ match }: { match: Match }) => (
-    <View style={styles.miniCard}>
+  const MiniCard = ({
+    match,
+    index,
+  }: {
+    match: Match;
+    index: number;
+  }) => (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={() => openMatchProfile(match, index)}
+      style={styles.miniCard}
+    >
       <View style={styles.miniRow}>
         <View style={styles.miniLeft}>
           <Text style={styles.miniName}>{match.name}</Text>
           <Text style={styles.miniDetail}>
-            Age {match.age}  ·  {cap(match.location)}
+            Age {match.age} · {cap(match.location)}
           </Text>
+
           {match.userType && (
             <Text style={styles.miniType}>
               {match.userType === "senior" ? "Senior" : "Young Companion"}
             </Text>
           )}
         </View>
-        <View style={[styles.miniScore, { backgroundColor: getScoreColor(match.score) }]}>
+
+        <View
+          style={[
+            styles.miniScore,
+            { backgroundColor: getScoreColor(match.score) },
+          ]}
+        >
           <Text style={styles.miniScoreText}>{match.score}%</Text>
         </View>
       </View>
+
       <View style={styles.scoreBar}>
         <View
           style={[
             styles.scoreBarFill,
-            { width: `${match.score}%` as any, backgroundColor: getScoreColor(match.score) },
+            {
+              width: `${match.score}%` as any,
+              backgroundColor: getScoreColor(match.score),
+            },
           ]}
         />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -97,7 +182,9 @@ export default function MatchResults() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.appName}>Sandrapp</Text>
         <Text style={styles.title}>Your Matches</Text>
-        <Text style={styles.subtitle}>These are your top community connections</Text>
+        <Text style={styles.subtitle}>
+          These are your top community connections
+        </Text>
 
         {allMatches.length === 0 ? (
           <View style={styles.emptyCard}>
@@ -108,12 +195,10 @@ export default function MatchResults() {
           </View>
         ) : (
           <>
-            {/* ── Top 3 full cards ── */}
             {topMatches.map((match, i) => (
-              <FullCard key={i} match={match} index={i} />
+              <FullCard key={`top-${i}`} match={match} index={i} />
             ))}
 
-            {/* ── Other Candidates ── */}
             {otherMatches.length > 0 && (
               <View style={styles.othersSection}>
                 <TouchableOpacity
@@ -123,7 +208,9 @@ export default function MatchResults() {
                   <Text style={styles.othersToggleText}>
                     {showOthers
                       ? "Hide Other Candidates"
-                      : `View ${otherMatches.length} Other Candidate${otherMatches.length > 1 ? "s" : ""}`}
+                      : `View ${otherMatches.length} Other Candidate${
+                          otherMatches.length > 1 ? "s" : ""
+                        }`}
                   </Text>
                   <Text style={styles.chevron}>{showOthers ? "▲" : "▼"}</Text>
                 </TouchableOpacity>
@@ -134,7 +221,11 @@ export default function MatchResults() {
                       Other potential candidates — lower compatibility scores
                     </Text>
                     {otherMatches.map((match, i) => (
-                      <MiniCard key={i} match={match} />
+                      <MiniCard
+                        key={`other-${i}`}
+                        match={match}
+                        index={i + 3}
+                      />
                     ))}
                   </View>
                 )}
@@ -165,6 +256,7 @@ export default function MatchResults() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#EAF3FF" },
   scroll: { padding: 20, alignItems: "center" },
+
   appName: {
     alignSelf: "flex-start",
     fontSize: 20,
@@ -172,6 +264,7 @@ const styles = StyleSheet.create({
     color: "#2F80ED",
     marginBottom: 6,
   },
+
   title: {
     fontSize: 28,
     fontWeight: "700",
@@ -179,9 +272,14 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     textAlign: "center",
   },
-  subtitle: { fontSize: 15, color: "#555", marginBottom: 24, textAlign: "center" },
 
-  /* Empty */
+  subtitle: {
+    fontSize: 15,
+    color: "#555",
+    marginBottom: 24,
+    textAlign: "center",
+  },
+
   emptyCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
@@ -189,9 +287,14 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
   },
-  emptyText: { color: "#555", textAlign: "center", fontSize: 15, lineHeight: 22 },
 
-  /* Full match card (top 3) */
+  emptyText: {
+    color: "#555",
+    textAlign: "center",
+    fontSize: 15,
+    lineHeight: 22,
+  },
+
   matchCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
@@ -203,22 +306,45 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+
   matchHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 10,
   },
-  matchName: { fontSize: 22, fontWeight: "700", color: "#1A1A2E" },
-  scoreBadge: { borderRadius: 20, paddingVertical: 4, paddingHorizontal: 12 },
-  scoreText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-  matchDetail: { fontSize: 15, color: "#444", marginBottom: 4 },
+
+  matchName: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#1A1A2E",
+  },
+
+  scoreBadge: {
+    borderRadius: 20,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+  },
+
+  scoreText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+
+  matchDetail: {
+    fontSize: 15,
+    color: "#444",
+    marginBottom: 4,
+  },
+
   matchType: {
     fontSize: 14,
     color: "#2F80ED",
     marginBottom: 12,
     fontWeight: "600",
   },
+
   scoreBar: {
     height: 8,
     backgroundColor: "#DDE3ED",
@@ -226,10 +352,17 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginTop: 8,
   },
-  scoreBarFill: { height: "100%", borderRadius: 999 },
 
-  /* Other candidates section */
-  othersSection: { width: "100%", marginBottom: 16 },
+  scoreBarFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+
+  othersSection: {
+    width: "100%",
+    marginBottom: 16,
+  },
+
   othersToggle: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -241,10 +374,22 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#B0C8F0",
   },
-  othersToggleText: { fontSize: 15, fontWeight: "600", color: "#2F80ED" },
-  chevron: { fontSize: 13, color: "#2F80ED" },
 
-  miniList: { marginTop: 10 },
+  othersToggleText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#2F80ED",
+  },
+
+  chevron: {
+    fontSize: 13,
+    color: "#2F80ED",
+  },
+
+  miniList: {
+    marginTop: 10,
+  },
+
   miniListLabel: {
     fontSize: 12,
     color: "#888",
@@ -253,7 +398,6 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
   },
 
-  /* Mini card (other candidates) */
   miniCard: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -265,16 +409,38 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+
   miniRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 8,
   },
-  miniLeft: { flex: 1, marginRight: 12 },
-  miniName: { fontSize: 17, fontWeight: "700", color: "#1A1A2E", marginBottom: 2 },
-  miniDetail: { fontSize: 13, color: "#666", marginBottom: 2 },
-  miniType: { fontSize: 12, color: "#2F80ED", fontWeight: "600" },
+
+  miniLeft: {
+    flex: 1,
+    marginRight: 12,
+  },
+
+  miniName: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#1A1A2E",
+    marginBottom: 2,
+  },
+
+  miniDetail: {
+    fontSize: 13,
+    color: "#666",
+    marginBottom: 2,
+  },
+
+  miniType: {
+    fontSize: 12,
+    color: "#2F80ED",
+    fontWeight: "600",
+  },
+
   miniScore: {
     borderRadius: 16,
     paddingVertical: 4,
@@ -282,9 +448,13 @@ const styles = StyleSheet.create({
     minWidth: 52,
     alignItems: "center",
   },
-  miniScoreText: { color: "#fff", fontWeight: "700", fontSize: 14 },
 
-  /* Dashboard button */
+  miniScoreText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+
   homeBtn: {
     marginTop: 8,
     backgroundColor: "#2F80ED",
@@ -294,5 +464,10 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
   },
-  homeBtnText: { color: "#fff", fontSize: 18, fontWeight: "600" },
+
+  homeBtnText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "600",
+  },
 });
