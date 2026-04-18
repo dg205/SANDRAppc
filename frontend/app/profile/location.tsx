@@ -142,7 +142,19 @@ export default function Location() {
             />
           </View>
 
+<<<<<<< HEAD
           <Text style={styles.talkHint}>Take as much time as you need</Text>
+=======
+          <Text style={styles.talkHint}>Talk for 3 minutes</Text>
+
+          <View style={styles.transcriptionBox}>
+            <Text style={styles.transcriptionText}>
+              {liveText ||
+                recordedText ||
+                "Tap the microphone to start recording your answer"}
+            </Text>
+          </View>
+>>>>>>> parent of 613a19a (small changes)
 
           <View style={styles.buttonRow}>
             <TouchableOpacity
