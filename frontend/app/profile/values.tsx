@@ -125,6 +125,7 @@ export default function Values() {
           <View style={styles.progressBarFill} />
         </View>
 
+<<<<<<< HEAD
         <Text style={styles.questionLabel}>
           Question 4 of 8: What are things you value the most?
         </Text>
@@ -133,6 +134,14 @@ export default function Values() {
           <Text style={styles.prompt}>
             What values matter most to you? Share the beliefs, principles,
             morals, or faith that guide your life and shape who you are.
+=======
+        <Text style={styles.questionLabel}>Question 4 of 8: Values</Text>
+
+        <View style={styles.card}>
+          <Text style={styles.prompt}>
+            What values matter most to you? Tell us about the beliefs,
+            principles, and qualities that guide your life.
+>>>>>>> parent of 613a19a (small changes)
           </Text>
 
           <View style={styles.recorderWrap}>
@@ -146,7 +155,19 @@ export default function Values() {
             />
           </View>
 
+<<<<<<< HEAD
           <Text style={styles.talkHint}>Take as much time as you need</Text>
+=======
+          <Text style={styles.talkHint}>Talk for 3 minutes</Text>
+
+          <View style={styles.transcriptionBox}>
+            <Text style={styles.transcriptionText}>
+              {liveText ||
+                recordedText ||
+                "Tap the microphone to start recording your answer"}
+            </Text>
+          </View>
+>>>>>>> parent of 613a19a (small changes)
 
           <View style={styles.buttonRow}>
             <TouchableOpacity
