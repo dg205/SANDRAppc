@@ -187,6 +187,18 @@ def init_db():
             profile TEXT NOT NULL
         )
     """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS connection_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_user_name TEXT NOT NULL,
+            to_user_name TEXT NOT NULL,
+            proposed_day TEXT NOT NULL,
+            proposed_time TEXT NOT NULL,
+            message TEXT DEFAULT '',
+            status TEXT DEFAULT 'pending',
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
     c.execute("SELECT COUNT(*) FROM candidates")
     if c.fetchone()[0] == 0:
         for candidate in SEED_CANDIDATES:
@@ -962,6 +974,94 @@ def transcribe_audio():
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+# ---------------------------------------------------------------------------
+# Connection Request Routes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/connect", methods=["POST"])
+def send_connect_request():
+    try:
+        data = request.json or {}
+        from_user = data.get("from_user_name", "").strip()
+        to_user   = data.get("to_user_name", "").strip()
+        day       = data.get("proposed_day", "").strip()
+        time      = data.get("proposed_time", "").strip()
+        message   = data.get("message", "").strip()
+
+        if not from_user or not to_user or not day or not time:
+            return jsonify({"error": "Missing required fields"}), 400
+
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO connection_requests (from_user_name, to_user_name, proposed_day, proposed_time, message) VALUES (?, ?, ?, ?, ?)",
+            (from_user, to_user, day, time, message)
+        )
+        new_id = c.lastrowid
+        conn.commit()
+        conn.close()
+
+        return jsonify({"status": "sent", "request_id": new_id}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/connect/<user_name>", methods=["GET"])
+def get_connect_requests(user_name):
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, from_user_name, to_user_name, proposed_day, proposed_time, message, status, created_at FROM connection_requests WHERE to_user_name = ? ORDER BY created_at DESC",
+            (user_name,)
+        )
+        rows = c.fetchall()
+        conn.close()
+
+        requests_list = [
+            {
+                "id": row[0],
+                "from_user_name": row[1],
+                "to_user_name": row[2],
+                "proposed_day": row[3],
+                "proposed_time": row[4],
+                "message": row[5],
+                "status": row[6],
+                "created_at": row[7],
+            }
+            for row in rows
+        ]
+        return jsonify({"requests": requests_list}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/connect/<int:request_id>", methods=["PUT"])
+def respond_connect_request(request_id):
+    try:
+        data = request.json or {}
+        status = data.get("status", "").strip()
+
+        if status not in ("accepted", "rejected"):
+            return jsonify({"error": "status must be 'accepted' or 'rejected'"}), 400
+
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute(
+            "UPDATE connection_requests SET status = ? WHERE id = ?",
+            (status, request_id)
+        )
+        if c.rowcount == 0:
+            conn.close()
+            return jsonify({"error": "Request not found"}), 404
+        conn.commit()
+        conn.close()
+
+        return jsonify({"status": "updated", "new_status": status}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 # ---------------------------------------------------------------------------
 # Startup — init_db() runs on import so Gunicorn workers also initialize it

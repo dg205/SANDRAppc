@@ -16,6 +16,7 @@ import {
 import { useLocalSearchParams, router } from "expo-router";
 import MatchMap from "../components/MatchMap";
 import { getItem, removeItem, SESSION_KEY } from "../utils/storage";
+import { BASE_URL } from "../utils/api";
 
 type Match = {
   name: string;
@@ -23,6 +24,16 @@ type Match = {
   location: string;
   score: number;
   userType?: string;
+  [key: string]: any;
+};
+
+type PendingRequest = {
+  id: number;
+  from_user_name: string;
+  proposed_day: string;
+  proposed_time: string;
+  message: string;
+  status: string;
 };
 
 export default function Dashboard() {
@@ -32,6 +43,8 @@ export default function Dashboard() {
   const [displayName, setDisplayName] = useState<string>(
     paramName && paramName.trim() ? paramName.trim() : ""
   );
+  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
+  const [userCity, setUserCity] = useState<string>("");
 
   let matches: Match[] = [];
   try {
@@ -48,11 +61,38 @@ export default function Dashboard() {
           try {
             const session = JSON.parse(raw);
             if (session?.name) setDisplayName(session.name);
+            if (session?.location) setUserCity(session.location);
           } catch {}
         }
       });
     }
   }, []);
+
+  // Fetch pending connection requests for this user
+  useEffect(() => {
+    const userName = paramName?.trim() || displayName;
+    if (!userName) return;
+    fetch(`${BASE_URL}/api/connect/${encodeURIComponent(userName)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const pending = (data.requests ?? []).filter(
+          (r: PendingRequest) => r.status === "pending"
+        );
+        setPendingRequests(pending);
+      })
+      .catch(() => {});
+  }, [displayName]);
+
+  const respondToRequest = async (id: number, status: "accepted" | "rejected") => {
+    try {
+      await fetch(`${BASE_URL}/api/connect/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      setPendingRequests((prev) => prev.filter((r) => r.id !== id));
+    } catch {}
+  };
 
   const name = displayName || "Friend";
 
@@ -130,7 +170,22 @@ export default function Dashboard() {
           <Text style={styles.sectionTitle}>Your Top Matches</Text>
 
           {matches.map((m, i) => (
-            <View key={i} style={styles.matchCard}>
+            <TouchableOpacity
+              key={i}
+              activeOpacity={0.85}
+              style={styles.matchCard}
+              onPress={() =>
+                router.push({
+                  pathname: "/profile/MatchProfile",
+                  params: {
+                    match: JSON.stringify(m),
+                    matchIndex: String(i),
+                    matches: matchesParam ?? "[]",
+                    userName: displayName,
+                  },
+                })
+              }
+            >
               <View style={styles.matchHeader}>
                 <Text style={styles.matchName}>{m.name}</Text>
                 <View
@@ -150,7 +205,7 @@ export default function Dashboard() {
 
               {m.userType && (
                 <Text style={styles.matchType}>
-                  {m.userType === "senior" ? "Senior" : "Young Companion"}
+                  {m.userType === "senior" ? "Older Adult" : "Young Companion"}
                 </Text>
               )}
 
@@ -165,11 +220,43 @@ export default function Dashboard() {
                   ]}
                 />
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
 
           {/* ── Map ── */}
-          <MatchMap matches={matches} />
+          <MatchMap matches={matches} userLocation={userCity} />
+        </>
+      )}
+
+      {/* ── Pending connection requests ── */}
+      {pendingRequests.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Pending Requests</Text>
+          {pendingRequests.map((req) => (
+            <View key={req.id} style={styles.requestCard}>
+              <Text style={styles.requestFrom}>{req.from_user_name}</Text>
+              <Text style={styles.requestDetail}>
+                {req.proposed_day} · {req.proposed_time}
+              </Text>
+              {!!req.message && (
+                <Text style={styles.requestMessage}>"{req.message}"</Text>
+              )}
+              <View style={styles.requestActions}>
+                <TouchableOpacity
+                  style={styles.acceptBtn}
+                  onPress={() => respondToRequest(req.id, "accepted")}
+                >
+                  <Text style={styles.acceptText}>Accept</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.declineBtn}
+                  onPress={() => respondToRequest(req.id, "rejected")}
+                >
+                  <Text style={styles.declineText}>Decline</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
         </>
       )}
 
@@ -292,6 +379,42 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
   },
   createBtnText: { color: "#fff", fontWeight: "600", fontSize: 16 },
+
+  /* Pending requests */
+  requestCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: "#F39C12",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  requestFrom: { fontSize: 18, fontWeight: "700", color: "#1A1A2E", marginBottom: 4 },
+  requestDetail: { fontSize: 14, color: "#555", marginBottom: 4 },
+  requestMessage: { fontSize: 14, color: "#777", fontStyle: "italic", marginBottom: 10 },
+  requestActions: { flexDirection: "row", gap: 10 },
+  acceptBtn: {
+    flex: 1,
+    backgroundColor: "#27AE60",
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  acceptText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  declineBtn: {
+    flex: 1,
+    backgroundColor: "#FFF0F0",
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#FFAAAA",
+  },
+  declineText: { color: "#E74C3C", fontWeight: "600", fontSize: 15 },
 
   /* Footer actions */
   footer: { marginTop: 24, gap: 10 },

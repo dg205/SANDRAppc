@@ -109,7 +109,7 @@ export default function MatchResults() {
 
       {match.userType && (
         <Text style={styles.matchType}>
-          {match.userType === "senior" ? "Senior" : "Young Companion"}
+          {match.userType === "senior" ? "Older Adult" : "Young Companion"}
         </Text>
       )}
 
@@ -148,7 +148,7 @@ export default function MatchResults() {
 
           {match.userType && (
             <Text style={styles.miniType}>
-              {match.userType === "senior" ? "Senior" : "Young Companion"}
+              {match.userType === "senior" ? "Older Adult" : "Young Companion"}
             </Text>
           )}
         </View>

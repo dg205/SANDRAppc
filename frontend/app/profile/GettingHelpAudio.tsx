@@ -2,10 +2,12 @@ import React, { useState } from "react";
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   Platform,
   SafeAreaView,
+  ScrollView,
 } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
@@ -17,6 +19,7 @@ export default function GettingHelpAudio() {
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [csvText, setCsvText] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [transcribedText, setTranscribedText] = useState("");
 
   const handleFinish = async ({
     audioUri,
@@ -29,8 +32,7 @@ export default function GettingHelpAudio() {
   }) => {
     setAudioUri(audioUri);
     setCsvText(csv);
-    setConfirmed(true);
-    updateProfile({ gettingHelpText: text });
+    setTranscribedText(text);
 
     if (Platform.OS !== "web") {
       await saveAudioFile(audioUri);
@@ -144,12 +146,36 @@ export default function GettingHelpAudio() {
               onRecordingChange={(isRecording) => {
                 if (isRecording) {
                   setConfirmed(false);
+                  setTranscribedText("");
                 }
               }}
             />
           </View>
 
           <Text style={styles.talkHint}>Take as much time as you need</Text>
+
+          {transcribedText !== "" && (
+            <>
+              <TextInput
+                style={styles.transcriptInput}
+                value={transcribedText}
+                onChangeText={setTranscribedText}
+                multiline
+                textAlignVertical="top"
+                placeholder="Your response will appear here..."
+                placeholderTextColor="#AAA"
+              />
+              <TouchableOpacity
+                style={styles.confirmButton}
+                onPress={() => {
+                  updateProfile({ gettingHelpText: transcribedText });
+                  setConfirmed(true);
+                }}
+              >
+                <Text style={styles.confirmButtonText}>Confirm ✓</Text>
+              </TouchableOpacity>
+            </>
+          )}
 
           <View style={styles.buttonRow}>
             <TouchableOpacity
@@ -349,6 +375,32 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
+  transcriptInput: {
+    width: "100%",
+    backgroundColor: "#F5F9FF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#C8D8F0",
+    padding: 14,
+    fontSize: 16,
+    color: "#1A1A2E",
+    minHeight: 100,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  confirmButton: {
+    width: "100%",
+    backgroundColor: "#27AE60",
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  confirmButtonText: {
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: "700",
+  },
   noteBox: {
     width: "100%",
     backgroundColor: "#E8F1FF",
