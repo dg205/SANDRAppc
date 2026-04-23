@@ -27,7 +27,15 @@ interface MapMatch {
   location: string;
 }
 
-export default function MatchMap({ matches }: { matches: MapMatch[] }) {
+export default function MatchMap({
+  matches,
+  userLocation,
+}: {
+  matches: MapMatch[];
+  userLocation?: string;
+}) {
+  const userCity = (userLocation ?? "").toLowerCase().trim();
+  const userPos = userCity ? CITY_POS[userCity] : undefined;
   // Only render pins for cities we have coordinates for
   const pinsWithPos = matches
     .map((m, i) => {
@@ -58,6 +66,19 @@ export default function MatchMap({ matches }: { matches: MapMatch[] }) {
           </Text>
         ))}
 
+        {/* User's own pin (gold star) */}
+        {userPos && (
+          <View
+            style={[
+              styles.pin,
+              styles.userPin,
+              { left: `${userPos[0]}%` as any, top: `${userPos[1]}%` as any },
+            ]}
+          >
+            <Text style={styles.userPinText}>★</Text>
+          </View>
+        )}
+
         {/* Match pins */}
         {pinsWithPos.map(({ m, i, pos }) => {
           const [left, top] = pos!;
@@ -84,6 +105,14 @@ export default function MatchMap({ matches }: { matches: MapMatch[] }) {
 
       {/* Legend */}
       <View style={styles.legend}>
+        {userPos && (
+          <View style={styles.legendRow}>
+            <View style={[styles.legendDot, styles.userLegendDot]}>
+              <Text style={styles.userLegendStar}>★</Text>
+            </View>
+            <Text style={[styles.legendText, { fontWeight: "700" }]}>You</Text>
+          </View>
+        )}
         {matches.map((m, i) => (
           <View key={i} style={styles.legendRow}>
             <View
@@ -156,6 +185,25 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "800",
     fontSize: 15,
+  },
+  userPin: {
+    backgroundColor: "#F4C430",
+    borderColor: "#fff",
+    zIndex: 10,
+  },
+  userPinText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 16,
+  },
+  userLegendDot: {
+    backgroundColor: "#F4C430",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  userLegendStar: {
+    fontSize: 8,
+    color: "#fff",
   },
   metroLabel: {
     position: "absolute",
