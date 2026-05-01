@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: sandrappc-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 4 --timeout 120
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: DATA_DIR
+        value: /data
+    disk:
+      name: sandrappc-db
+      mountPath: /data
+      sizeGB: 1

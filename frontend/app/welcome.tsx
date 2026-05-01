@@ -24,6 +24,10 @@ export default function Welcome() {
         >
           <Text style={styles.buttonText}>✨ Sign Up</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity style={styles.backButton} onPress={() => router.push("/language")}>
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Footer message */}
@@ -43,6 +47,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: 60,
     paddingHorizontal: 20,
+    
   },
 
   logo: {
@@ -101,5 +106,19 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: "#1A1A1A",
     fontSize: 14,
+  },
+
+  backButton: {
+    width: "90%",
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#8AB4FF",
+    alignItems: "center",
+  },
+
+  backButtonText: {
+    fontSize: 18,
+    color: "#1A1A1A",
   },
 });

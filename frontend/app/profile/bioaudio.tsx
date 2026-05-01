@@ -14,7 +14,7 @@ import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
 import { useProfile } from "./profileContext";
 
-export default function Hobbies() {
+export default function BioAudio() {
   const { updateProfile } = useProfile();
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [csvText, setCsvText] = useState("");
@@ -52,7 +52,7 @@ export default function Hobbies() {
     const audioDir = FileSystem.documentDirectory + "audio/";
     await FileSystem.makeDirectoryAsync(audioDir, { intermediates: true });
 
-    const fileName = `hobbies_audio_${Date.now()}.m4a`;
+    const fileName = `bio_audio_${Date.now()}.m4a`;
     const dest = audioDir + fileName;
 
     await FileSystem.copyAsync({ from: uri, to: dest });
@@ -62,7 +62,7 @@ export default function Hobbies() {
     const transDir = FileSystem.documentDirectory + "transcriptions/";
     await FileSystem.makeDirectoryAsync(transDir, { intermediates: true });
 
-    const fileName = `hobbies_transcription_${Date.now()}.txt`;
+    const fileName = `bio_transcription_${Date.now()}.txt`;
     const dest = transDir + fileName;
 
     await FileSystem.writeAsStringAsync(dest, text);
@@ -80,7 +80,7 @@ export default function Hobbies() {
 
     const csvContent = ["word", ...words].join("\n");
 
-    const fileName = `hobbies_words_${Date.now()}.csv`;
+    const fileName = `bio_words_${Date.now()}.csv`;
     const dest = csvDir + fileName;
 
     await FileSystem.writeAsStringAsync(dest, csvContent);
@@ -99,7 +99,7 @@ export default function Hobbies() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "hobbies_audio.m4a";
+    a.download = "bio_audio.m4a";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -112,7 +112,7 @@ export default function Hobbies() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "hobbies_words.csv";
+    a.download = "bio_words.csv";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -133,11 +133,12 @@ export default function Hobbies() {
           <View style={styles.progressBarFill} />
         </View>
 
-        <Text style={styles.questionLabel}>Question 3 of 8: Hobbies</Text>
+        <Text style={styles.questionLabel}>Question 5 of 8: Bio</Text>
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-            What do you enjoy doing in your free time? Tell us about your hobbies, interests, or activities you like.
+          Can you tell us a little about yourself?
+          What are some qualities or experiences that make you who you are? Feel free to share anything about your personality, background, or what you’d like others to know about you.
           </Text>
 
           <View style={styles.recorderWrap}>
@@ -152,7 +153,9 @@ export default function Hobbies() {
             />
           </View>
 
-          <Text style={styles.talkHint}>Take as much time as you need</Text>
+          <Text style={styles.talkHint}>
+            Take as much time as you need
+          </Text>
 
           {transcribedText !== "" && (
             <>
@@ -168,7 +171,7 @@ export default function Hobbies() {
               <TouchableOpacity
                 style={styles.confirmButton}
                 onPress={() => {
-                  updateProfile({ hobbiesText: transcribedText, hobbiesAudioUri: audioUri });
+                  updateProfile({ bio: transcribedText });
                   setConfirmed(true);
                 }}
               >
@@ -191,7 +194,7 @@ export default function Hobbies() {
                 !confirmed && styles.nextButtonDisabled,
               ]}
               disabled={!confirmed}
-              onPress={() => router.push("/profile/values")}
+              onPress={() => router.push("/profile/GettingHelpAudio")}
             >
               <Text style={styles.nextButtonText}>Next →</Text>
             </TouchableOpacity>
@@ -200,7 +203,7 @@ export default function Hobbies() {
 
         <View style={styles.noteBox}>
           <Text style={styles.noteText}>
-            Review your response, then tap &quot;Confirm&quot; to continue.
+            Review your response, then tap "Confirm" to continue.
           </Text>
         </View>
 
@@ -280,7 +283,7 @@ const styles = StyleSheet.create({
   },
 
   progressBarFill: {
-    width: "37.5%",
+    width: "62.5%",
     height: "100%",
     backgroundColor: "#2F80ED",
     borderRadius: 999,
