@@ -1,101 +1,66 @@
 import React, { useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator, Alert } from "react-native";
 import { router } from "expo-router";
-import { getTopMatches } from "../../utils/api";
+import { addUser, BASE_URL } from "../../utils/api";
 import { useProfile } from "../../utils/ProfileContext";
+import { saveItem, SESSION_KEY } from "../../utils/storage";
 
 export default function Finish() {
   const [loading, setLoading] = useState(false);
-  const { profile } = useProfile();
+  const { profile, resetProfile } = useProfile();
 
   const handleGoHome = async () => {
     try {
       setLoading(true);
 
-      // Build targetUser from collected profile data
-      const targetUser = {
-        name: "User",
-        age: profile.age ?? 65,
-        location: profile.location || "atlanta",
-        faith: profile.faith || "christian",
-        interests: profile.interests.length > 0 ? profile.interests : ["walking", "music"],
-        languages: profile.languages.length > 0 ? profile.languages : ["english"],
-        culturalBackground: profile.culturalBackground || "american",
-        values: profile.values.length > 0 ? profile.values : ["family", "kindness"],
-        favoriteFood: profile.favoriteFood.length > 0 ? profile.favoriteFood : ["american"],
-        helpWith: profile.helpWith.length > 0 ? profile.helpWith : ["errands"],
-        talkPreferences: profile.talkPreferences.length > 0 ? profile.talkPreferences : ["phone"],
-        connectionGoals: profile.connectionGoals.length > 0 ? profile.connectionGoals : ["friendship"],
-        familySituation: profile.familySituation || "lives alone",
-        availableDays: profile.availableDays.length > 0 ? profile.availableDays : ["monday", "wednesday"],
-      };
+      // 1. Save this user to the backend DB
+      await addUser({ ...profile });
 
-      // Hardcoded candidates (replace with real DB later)
-      const candidates = [
-        {
-          name: "Maria",
-          age: 70,
-          location: "atlanta",
-          faith: "christian",
-          interests: ["music", "gardening"],
-          languages: ["english"],
-          culturalBackground: "mexican",
-          values: ["family"],
-          favoriteFood: ["mexican"],
-          helpWith: ["rides"],
-          talkPreferences: ["phone"],
-          connectionGoals: ["friendship"],
-          familySituation: "widowed",
-          availableDays: ["monday"],
-        },
-        {
-          name: "James",
-          age: 62,
-          location: "marietta",
-          faith: "christian",
-          interests: ["movies", "walking"],
-          languages: ["english"],
-          culturalBackground: "american",
-          values: ["honesty"],
-          favoriteFood: ["bbq"],
-          helpWith: ["errands"],
-          talkPreferences: ["in-person"],
-          connectionGoals: ["friendship"],
-          familySituation: "married",
-          availableDays: ["wednesday"],
-        },
-        {
-          name: "Rosa",
-          age: 73,
-          location: "atlanta",
-          faith: "catholic",
-          interests: ["cooking", "music"],
-          languages: ["spanish"],
-          culturalBackground: "mexican",
-          values: ["family"],
-          favoriteFood: ["mexican"],
-          helpWith: ["rides"],
-          talkPreferences: ["phone"],
-          connectionGoals: ["friendship"],
-          familySituation: "lives with family",
-          availableDays: ["monday", "friday"],
-        },
-      ];
+      // 2. Get ML matches — backend filters to opposite userType automatically
+      const res = await fetch(`${BASE_URL}/api/match`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentUser: profile }),
+      });
+      if (!res.ok) throw new Error(`Match request failed (${res.status})`);
+      const result = await res.json();
 
-      const result = await getTopMatches(targetUser, candidates);
+      // Preserve full candidate + features payload for MatchResults
+      const matchesWithFullData = (result.matches ?? []).map((m: any) => ({
+        ...m,
+        candidate: {
+          ...(m.candidate ?? {}),
+          name: m.candidate?.name ?? "Unknown",
+          age: m.candidate?.age ?? 0,
+          location: m.candidate?.location ?? "",
+          userType: m.candidate?.userType ?? "",
+        },
+        features: {
+          ...(m.features ?? {}),
+          shared_interests: m.features?.shared_interests ?? [],
+          shared_values: m.features?.shared_values ?? [],
+          shared_languages: m.features?.shared_languages ?? [],
+        },
+      }));
 
-      // Pass to home as a param (stringify because params are strings)
+      // Persist session so dashboard + edit profile can read it later
+      const userName = profile.name ?? "";
+      await saveItem(SESSION_KEY, JSON.stringify({ ...profile, name: userName }));
+      resetProfile();
+
+      // Pass matches + user's name to MatchResults screen
       router.push({
-        pathname: "/home",
-        params: { matches: JSON.stringify(result.matches ?? []) },
+        pathname: "/profile/MatchResults",
+        params: {
+          matches: JSON.stringify(matchesWithFullData),
+          userName,
+        },
       });
     } catch (err: any) {
       Alert.alert(
         "Matchmaking failed",
-        err?.message ?? "Could not reach the backend. Check your IP + Flask server."
+        err?.message ?? "Could not reach the backend. Is Flask running?"
       );
-
-      // Still let them go home even if matching fails
       router.push("/home");
     } finally {
       setLoading(false);
@@ -107,7 +72,7 @@ export default function Finish() {
       <Image source={require("../../assets/logo.png")} style={styles.logo} />
 
       <View style={styles.card}>
-        <Text style={styles.title}>You're all set! 🎉</Text>
+        <Text style={styles.title}>You're all set!</Text>
         <Text style={styles.caption}>Your profile has been created.</Text>
 
         <TouchableOpacity

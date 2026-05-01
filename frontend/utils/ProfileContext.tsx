@@ -1,6 +1,10 @@
 import React, { createContext, useContext, useState, type ReactNode } from "react";
 
+export type UserType = "senior" | "companion" | "";
+
 export type ProfileData = {
+  userType: UserType;
+  name: string;
   age: number | null;
   location: string;
   faith: string;
@@ -16,9 +20,21 @@ export type ProfileData = {
   availableDays: string[];
   bio: string;
   email: string;
+  // audio transcript fields
+  locationText?: string;
+  locationAudioUri?: string | null;
+  hobbiesText?: string;
+  hobbiesAudioUri?: string | null;
+  valuesText?: string;
+  valuesAudioUri?: string | null;
+  gettingHelpText?: string;
+  teachingText?: string;
+  meetingText?: string;
 };
 
 const defaultProfile: ProfileData = {
+  userType: "",
+  name: "",
   age: null,
   location: "",
   faith: "",

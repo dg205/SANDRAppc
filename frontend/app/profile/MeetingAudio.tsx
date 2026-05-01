@@ -14,7 +14,7 @@ import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
 import { useProfile } from "./profileContext";
 
-export default function Hobbies() {
+export default function MeetingAudio() {
   const { updateProfile } = useProfile();
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [csvText, setCsvText] = useState("");
@@ -52,7 +52,7 @@ export default function Hobbies() {
     const audioDir = FileSystem.documentDirectory + "audio/";
     await FileSystem.makeDirectoryAsync(audioDir, { intermediates: true });
 
-    const fileName = `hobbies_audio_${Date.now()}.m4a`;
+    const fileName = `meeting_audio_${Date.now()}.m4a`;
     const dest = audioDir + fileName;
 
     await FileSystem.copyAsync({ from: uri, to: dest });
@@ -62,7 +62,7 @@ export default function Hobbies() {
     const transDir = FileSystem.documentDirectory + "transcriptions/";
     await FileSystem.makeDirectoryAsync(transDir, { intermediates: true });
 
-    const fileName = `hobbies_transcription_${Date.now()}.txt`;
+    const fileName = `meeting_transcription_${Date.now()}.txt`;
     const dest = transDir + fileName;
 
     await FileSystem.writeAsStringAsync(dest, text);
@@ -80,7 +80,7 @@ export default function Hobbies() {
 
     const csvContent = ["word", ...words].join("\n");
 
-    const fileName = `hobbies_words_${Date.now()}.csv`;
+    const fileName = `meeting_words_${Date.now()}.csv`;
     const dest = csvDir + fileName;
 
     await FileSystem.writeAsStringAsync(dest, csvContent);
@@ -99,7 +99,7 @@ export default function Hobbies() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "hobbies_audio.m4a";
+    a.download = "meeting_audio.m4a";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -112,7 +112,7 @@ export default function Hobbies() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "hobbies_words.csv";
+    a.download = "meeting_words.csv";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -133,11 +133,14 @@ export default function Hobbies() {
           <View style={styles.progressBarFill} />
         </View>
 
-        <Text style={styles.questionLabel}>Question 3 of 8: Hobbies</Text>
+        <Text style={styles.questionLabel}>
+          Question 8 of 8: Who You Want to Meet
+        </Text>
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-            What do you enjoy doing in your free time? Tell us about your hobbies, interests, or activities you like.
+          What kind of people would you like to meet? What types of friends or connections are you hoping to make?
+
           </Text>
 
           <View style={styles.recorderWrap}>
@@ -168,7 +171,7 @@ export default function Hobbies() {
               <TouchableOpacity
                 style={styles.confirmButton}
                 onPress={() => {
-                  updateProfile({ hobbiesText: transcribedText, hobbiesAudioUri: audioUri });
+                  updateProfile({ meetingText: transcribedText });
                   setConfirmed(true);
                 }}
               >
@@ -191,9 +194,9 @@ export default function Hobbies() {
                 !confirmed && styles.nextButtonDisabled,
               ]}
               disabled={!confirmed}
-              onPress={() => router.push("/profile/values")}
+              onPress={() => router.push("/profile/finish")}
             >
-              <Text style={styles.nextButtonText}>Next →</Text>
+              <Text style={styles.nextButtonText}>Finish →</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -280,7 +283,7 @@ const styles = StyleSheet.create({
   },
 
   progressBarFill: {
-    width: "37.5%",
+    width: "100%",
     height: "100%",
     backgroundColor: "#2F80ED",
     borderRadius: 999,
@@ -290,6 +293,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#666",
     marginBottom: 18,
+    textAlign: "center",
   },
 
   card: {
