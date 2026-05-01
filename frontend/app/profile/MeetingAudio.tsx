@@ -138,8 +138,8 @@ export default function MeetingAudio() {
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-            Tell us who you want to meet. What kind of people are you hoping to
-            connect with?
+          What kind of people would you like to meet? What types of friends or connections are you hoping to make?
+
           </Text>
 
           <View style={styles.recorderWrap}>

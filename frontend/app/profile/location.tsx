@@ -128,8 +128,7 @@ export default function Location() {
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-            Tell us where you live. Share your city, area, or whatever location
-            details you feel comfortable giving.
+            Where do you live? You can share your city, neighborhood, or any location details you feel comfortable sharing.
           </Text>
 
           <View style={styles.recorderWrap}>

@@ -133,8 +133,7 @@ export default function Values() {
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-            What values matter most to you? Share the beliefs, principles,
-            morals, or faith that guide your life and shape who you are.
+          What values or principles are most important to you? You can share beliefs, principles, morals, or faith that guide your life.
           </Text>
 
           <View style={styles.recorderWrap}>
