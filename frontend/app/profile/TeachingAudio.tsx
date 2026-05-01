@@ -136,8 +136,8 @@ export default function TeachingAudio() {
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-            What&apos;s something you&apos;d love to teach others? Share a skill,
-            idea, or passion you enjoy passing on.
+          What is something you enjoy teaching others?
+This could be a skill, an idea, or something you’re passionate about.
           </Text>
 
           <View style={styles.recorderWrap}>

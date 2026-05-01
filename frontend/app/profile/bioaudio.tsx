@@ -136,8 +136,8 @@ export default function BioAudio() {
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-            Tell us a little about yourself. Share your personality, background,
-            and anything you'd like others to know about you.
+          Can you tell us a little about yourself?
+          What are some qualities or experiences that make you who you are? Feel free to share anything about your personality, background, or what you’d like others to know about you.
           </Text>
 
           <View style={styles.recorderWrap}>

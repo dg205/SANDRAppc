@@ -136,8 +136,7 @@ export default function GettingHelpAudio() {
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-            Tell us about how you prefer to receive support. What helps you feel
-            understood, encouraged, or motivated?
+          How do you prefer to receive support from others? What kinds of things help you feel understood, encouraged, or motivated (for example, talking, spending time together, or practical help)?
           </Text>
 
           <View style={styles.recorderWrap}>

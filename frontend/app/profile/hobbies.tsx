@@ -136,8 +136,7 @@ export default function Hobbies() {
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-            What do you like to do? Tell us about your hobbies and free time
-            activities.
+            What do you enjoy doing in your free time? Tell us about your hobbies, interests, or activities you like.
           </Text>
 
           <View style={styles.recorderWrap}>
