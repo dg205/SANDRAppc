@@ -33,6 +33,7 @@ export default function TeachingAudio() {
     setAudioUri(audioUri);
     setCsvText(csv);
     setTranscribedText(text);
+    setConfirmed(true);
 
     if (Platform.OS !== "web") {
       await saveAudioFile(audioUri);
