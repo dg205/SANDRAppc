@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import json
 import time
 import os
@@ -38,20 +39,20 @@ def transcribe_with_groq(audio_path):
 
 
 # Use /data on Render (persistent disk) or local directory otherwise
-_BASE_DIR = os.environ.get("DATA_DIR", os.path.dirname(__file__))
-DB_PATH = os.path.join(_BASE_DIR, "candidates.db")
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "trained_model.pkl")
 SCALER_PATH = os.path.join(os.path.dirname(__file__), "scaler.pkl")
-AUDIO_UPLOAD_DIR = os.path.join(_BASE_DIR, "AuidoRecordings")
+AUDIO_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "AudioRecordings")
 os.makedirs(AUDIO_UPLOAD_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
-# Thread-safe DB helper with WAL mode enabled
+# PostgreSQL connection
 # ---------------------------------------------------------------------------
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL")   # allow concurrent reads + writes
-    conn.execute("PRAGMA synchronous=NORMAL") # faster writes, still safe
+    database_url = os.environ.get("DATABASE_URL", "")
+    # Render provides postgres:// but psycopg2 requires postgresql://
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    conn = psycopg2.connect(database_url)
     return conn
 
 # ---------------------------------------------------------------------------
@@ -182,33 +183,47 @@ def init_db():
     c = conn.cursor()
     c.execute("""
         CREATE TABLE IF NOT EXISTS candidates (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             profile TEXT NOT NULL
         )
     """)
     c.execute("""
         CREATE TABLE IF NOT EXISTS connection_requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             from_user_name TEXT NOT NULL,
             to_user_name TEXT NOT NULL,
             proposed_day TEXT NOT NULL,
             proposed_time TEXT NOT NULL,
             message TEXT DEFAULT '',
             status TEXT DEFAULT 'pending',
-            created_at TEXT DEFAULT (datetime('now'))
+            created_at TIMESTAMP DEFAULT NOW()
         )
     """)
     c.execute("SELECT COUNT(*) FROM candidates")
     if c.fetchone()[0] == 0:
         for candidate in SEED_CANDIDATES:
             c.execute(
-                "INSERT INTO candidates (name, profile) VALUES (?, ?)",
+                "INSERT INTO candidates (name, profile) VALUES (%s, %s)",
                 (candidate["name"], json.dumps(candidate))
             )
         print(f"Seeded {len(SEED_CANDIDATES)} profiles ({len(SENIOR_PROFILES)} seniors, {len(COMPANION_PROFILES)} companions)")
     conn.commit()
     conn.close()
+
+    try:
+        from retrain import retrain_model
+        result = retrain_model()
+        print(f"Model retrained on startup: {result}")
+        with open(MODEL_PATH, "rb") as f:
+            ML_MODEL_NEW = pickle.load(f)
+        with open(SCALER_PATH, "rb") as f:
+            ML_SCALER_NEW = pickle.load(f)
+        global ML_MODEL, ML_SCALER
+        ML_MODEL = ML_MODEL_NEW
+        ML_SCALER = ML_SCALER_NEW
+    except Exception as e:
+        print(f"Startup retrain skipped: {e}")
 
 def get_all_candidates():
     conn = get_db_connection()
@@ -862,10 +877,10 @@ def add_user():
         conn = get_db_connection()
         c = conn.cursor()
         c.execute(
-            "INSERT INTO candidates (name, profile) VALUES (?, ?)",
+            "INSERT INTO candidates (name, profile) VALUES (%s, %s) RETURNING id",
             (name, json.dumps(user_data))
         )
-        new_id = c.lastrowid
+        new_id = c.fetchone()[0]
         conn.commit()
         conn.close()
 
@@ -891,7 +906,7 @@ def update_user(email):
                     target_id = row_id
                     p.update(updates)
                     c.execute(
-                        "UPDATE candidates SET name=?, profile=? WHERE id=?",
+                        "UPDATE candidates SET name=%s, profile=%s WHERE id=%s",
                         (p.get("name", "Unknown"), json.dumps(p), row_id)
                     )
                     break
@@ -995,10 +1010,10 @@ def send_connect_request():
         conn = get_db_connection()
         c = conn.cursor()
         c.execute(
-            "INSERT INTO connection_requests (from_user_name, to_user_name, proposed_day, proposed_time, message) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO connection_requests (from_user_name, to_user_name, proposed_day, proposed_time, message) VALUES (%s, %s, %s, %s, %s) RETURNING id",
             (from_user, to_user, day, time, message)
         )
-        new_id = c.lastrowid
+        new_id = c.fetchone()[0]
         conn.commit()
         conn.close()
 
@@ -1013,7 +1028,7 @@ def get_connect_requests(user_name):
         conn = get_db_connection()
         c = conn.cursor()
         c.execute(
-            "SELECT id, from_user_name, to_user_name, proposed_day, proposed_time, message, status, created_at FROM connection_requests WHERE to_user_name = ? ORDER BY created_at DESC",
+            "SELECT id, from_user_name, to_user_name, proposed_day, proposed_time, message, status, created_at FROM connection_requests WHERE to_user_name = %s ORDER BY created_at DESC",
             (user_name,)
         )
         rows = c.fetchall()
@@ -1049,7 +1064,7 @@ def respond_connect_request(request_id):
         conn = get_db_connection()
         c = conn.cursor()
         c.execute(
-            "UPDATE connection_requests SET status = ? WHERE id = ?",
+            "UPDATE connection_requests SET status = %s WHERE id = %s",
             (status, request_id)
         )
         if c.rowcount == 0:
@@ -1059,6 +1074,24 @@ def respond_connect_request(request_id):
         conn.close()
 
         return jsonify({"status": "updated", "new_status": status}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/retrain", methods=["POST"])
+def retrain_endpoint():
+    try:
+        from retrain import retrain_model
+        result = retrain_model()
+
+        # Reload the updated model into memory immediately
+        global ML_MODEL, ML_SCALER
+        with open(MODEL_PATH, "rb") as f:
+            ML_MODEL = pickle.load(f)
+        with open(SCALER_PATH, "rb") as f:
+            ML_SCALER = pickle.load(f)
+
+        return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
