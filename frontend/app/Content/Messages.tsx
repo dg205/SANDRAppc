@@ -72,9 +72,13 @@ export default function Messages() {
         </View>
 
         <View style={styles.topRightButtons}>
-          <TouchableOpacity style={[styles.topActionButton, styles.greenButton]}>
-            <Text style={styles.topActionText}>🗺️</Text>
-          </TouchableOpacity>
+        <TouchableOpacity
+style={[styles.topActionButton, styles.greenButton]}
+onPress={() => router.push("/components/MatchMap")}
+>
+<Text style={styles.topActionText}>🗺️</Text>
+</TouchableOpacity>
+
           <TouchableOpacity style={[styles.topActionButton, styles.redButton]}>
             <Text style={styles.topActionText}>🧺</Text>
           </TouchableOpacity>
