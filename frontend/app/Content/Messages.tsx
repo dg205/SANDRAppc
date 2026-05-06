@@ -13,6 +13,51 @@ import { router } from "expo-router";
 
 export default function Messages() {
   const [message, setMessage] = useState("");
+  const [chat, setChat] = useState([
+    {
+      id: 1,
+      text: "Good afternoon! How has your day been?",
+      sender: "michael",
+      time: "2:30 PM",
+    },
+    {
+      id: 2,
+      text: "Hello Michael! It's been lovely. I spent some time in my garden this morning.",
+      sender: "me",
+      time: "2:35 PM",
+    },
+    {
+      id: 3,
+      text: "That sounds wonderful! What are you growing this season?",
+      sender: "michael",
+      time: "2:40 PM",
+    },
+  ]);
+
+  const sendMessage = () => {
+    if (!message.trim()) return;
+
+    const newMessage = {
+      id: Date.now(),
+      text: message,
+      sender: "me",
+      time: "Now",
+    };
+
+    setChat([...chat, newMessage]);
+    setMessage("");
+
+    // Auto-reply after 1 second
+    setTimeout(() => {
+      const reply = {
+        id: Date.now() + 1,
+        text: "That sounds lovely! Tell me more 😊",
+        sender: "michael",
+        time: "Now",
+      };
+      setChat((prev) => [...prev, reply]);
+    }, 1000);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -58,27 +103,22 @@ export default function Messages() {
           contentContainerStyle={styles.messagesContent}
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.messageBubble, styles.receivedBubble]}>
-            <Text style={styles.receivedText}>
-              Good afternoon! How has your day been?
-            </Text>
-            <Text style={styles.timeText}>2:30 PM</Text>
-          </View>
-
-          <View style={[styles.messageBubble, styles.sentBubble]}>
-            <Text style={styles.sentText}>
-              Hello Michael! It&apos;s been lovely. I spent some time in my garden this
-              morning.
-            </Text>
-            <Text style={styles.sentTimeText}>2:35 PM</Text>
-          </View>
-
-          <View style={[styles.messageBubble, styles.receivedBubble]}>
-            <Text style={styles.receivedText}>
-              That sounds wonderful! What are you growing this season?
-            </Text>
-            <Text style={styles.timeText}>2:40 PM</Text>
-          </View>
+          {chat.map((msg) => (
+            <View
+              key={msg.id}
+              style={[
+                styles.messageBubble,
+                msg.sender === "me" ? styles.sentBubble : styles.receivedBubble,
+              ]}
+            >
+              <Text style={msg.sender === "me" ? styles.sentText : styles.receivedText}>
+                {msg.text}
+              </Text>
+              <Text style={msg.sender === "me" ? styles.sentTimeText : styles.timeText}>
+                {msg.time}
+              </Text>
+            </View>
+          ))}
         </ScrollView>
 
         <View style={styles.inputBar}>
@@ -94,7 +134,7 @@ export default function Messages() {
             style={styles.input}
           />
 
-          <TouchableOpacity style={styles.sendButton}>
+          <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
             <Text style={styles.sendButtonText}>Send</Text>
           </TouchableOpacity>
         </View>

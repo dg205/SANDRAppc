@@ -14,7 +14,7 @@ export default function Navigation() {
       icon: "🧠",
       title: "Smart Matches",
       subtitle: "AI-powered",
-      route: "/smart-matches",
+      route: "/profile/MatchResults",
     },
     {
       icon: "🏥",
@@ -115,9 +115,13 @@ export default function Navigation() {
         </View>
 
         <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.messageButton}>
-            <Text style={styles.messageButtonText}>💬 Message</Text>
-          </TouchableOpacity>
+        <TouchableOpacity
+  style={styles.messageButton}
+  onPress={() => router.push("/Content/Messages")}
+>
+  <Text style={styles.messageButtonText}>💬 Message</Text>
+</TouchableOpacity>
+
 
           <TouchableOpacity style={styles.profileButton}>
             <Text style={styles.profileButtonText}>👀 Profile</Text>
