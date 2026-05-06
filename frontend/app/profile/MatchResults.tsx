@@ -238,7 +238,7 @@ export default function MatchResults() {
           style={styles.homeBtn}
           onPress={() =>
             router.push({
-              pathname: "/home",
+              pathname: "/Content/Navigation",
               params: {
                 matches: matchesParam ?? "[]",
                 userName: userName ?? "",
@@ -255,7 +255,7 @@ export default function MatchResults() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#EAF3FF" },
-  scroll: { padding: 20, alignItems: "center" },
+  scroll: { padding: 20, paddingBottom: 60, alignItems: "center" },
 
   appName: {
     alignSelf: "flex-start",
