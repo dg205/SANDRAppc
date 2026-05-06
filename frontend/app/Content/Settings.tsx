@@ -16,7 +16,7 @@ export default function SettingsScreen() {
   const [name, setName] = useState("Your Name");
   const [address, setAddress] = useState("123 Main St, Marietta, GA");
   const [phone, setPhone] = useState("(555) 123‑4567");
-  const [textSize, setTextSize] = useState(18);
+  const [textSize, setTextSize] = useState(20);
   const [theme, setTheme] = useState("blue");
 
   const themeColors = {
@@ -27,7 +27,6 @@ export default function SettingsScreen() {
   };
 
   const pickImage = () => {
-    // Hook up Expo ImagePicker here
     alert("Image picker coming soon!");
   };
 
@@ -35,11 +34,13 @@ export default function SettingsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: "#F0F4FA" }]}>
       <ScrollView contentContainerStyle={styles.content}>
 
+        {/* BACK BUTTON */}
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
 
-        <Text style={[styles.header, { fontSize: textSize + 4 }]}>
+        {/* HEADER */}
+        <Text style={[styles.header, { fontSize: textSize + 6 }]}>
           Settings
         </Text>
 
@@ -60,6 +61,8 @@ export default function SettingsScreen() {
             value={name}
             onChangeText={setName}
             style={[styles.input, { fontSize: textSize }]}
+            accessible
+            accessibilityLabel="Enter your name"
           />
         </View>
 
@@ -70,6 +73,8 @@ export default function SettingsScreen() {
             value={address}
             onChangeText={setAddress}
             style={[styles.input, { fontSize: textSize }]}
+            accessible
+            accessibilityLabel="Enter your address"
           />
         </View>
 
@@ -81,6 +86,8 @@ export default function SettingsScreen() {
             onChangeText={setPhone}
             style={[styles.input, { fontSize: textSize }]}
             keyboardType="phone-pad"
+            accessible
+            accessibilityLabel="Enter your phone number"
           />
         </View>
 
@@ -89,7 +96,12 @@ export default function SettingsScreen() {
           <Text style={[styles.label, { fontSize: textSize }]}>Text Size</Text>
 
           <View style={styles.textSizeRow}>
-            <TouchableOpacity onPress={() => setTextSize(Math.max(14, textSize - 2))}>
+            <TouchableOpacity
+              onPress={() => setTextSize(Math.max(16, textSize - 2))}
+              style={styles.sizeButtonWrap}
+              accessible
+              accessibilityLabel="Decrease text size"
+            >
               <Text style={styles.sizeButton}>A−</Text>
             </TouchableOpacity>
 
@@ -97,7 +109,12 @@ export default function SettingsScreen() {
               {textSize}px
             </Text>
 
-            <TouchableOpacity onPress={() => setTextSize(Math.min(30, textSize + 2))}>
+            <TouchableOpacity
+              onPress={() => setTextSize(Math.min(32, textSize + 2))}
+              style={styles.sizeButtonWrap}
+              accessible
+              accessibilityLabel="Increase text size"
+            >
               <Text style={styles.sizeButton}>A+</Text>
             </TouchableOpacity>
           </View>
@@ -117,6 +134,8 @@ export default function SettingsScreen() {
                   theme === key && styles.selectedDot,
                 ]}
                 onPress={() => setTheme(key)}
+                accessible
+                accessibilityLabel={`Select ${key} theme`}
               />
             ))}
           </View>
@@ -155,63 +174,88 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: 20 },
-  backButton: { marginBottom: 10 },
-  backText: { fontSize: 18, color: "#356AE6" },
 
-  header: {
-    fontWeight: "600",
-    color: "#334155",
-    marginBottom: 20,
+  content: {
+    padding: 20,
+    alignItems: "center",
   },
 
-  section: { marginBottom: 24 },
+  backButton: {
+    width: "100%",
+    alignItems: "flex-start",
+    marginBottom: 10,
+  },
+
+  backText: {
+    fontSize: 20,
+    color: "#356AE6",
+    textAlign: "left",
+  },
+
+
+  header: {
+    fontWeight: "700",
+    color: "#334155",
+    marginBottom: 24,
+    textAlign: "center",
+  },
+
+  section: { marginBottom: 32, width: "100%", alignItems: "center" },
 
   label: {
-    fontWeight: "500",
+    fontWeight: "600",
     color: "#334155",
-    marginBottom: 6,
+    marginBottom: 10,
+    textAlign: "center",
   },
 
   input: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#C8D5E5",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: "#AAB7C8",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    width: "90%",
+    textAlign: "center",
   },
 
   imageWrap: { alignItems: "center" },
 
   profileImage: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     marginBottom: 8,
   },
 
   changePhotoText: {
     color: "#356AE6",
-    fontSize: 14,
+    fontSize: 16,
+    textAlign: "center",
   },
 
   textSizeRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    width: 160,
+    justifyContent: "center",
+    width: "80%",
+    marginTop: 10,
+  },
+
+  sizeButtonWrap: {
+    padding: 10,
   },
 
   sizeButton: {
-    fontSize: 22,
-    paddingHorizontal: 10,
+    fontSize: 28,
     color: "#334155",
   },
 
   sizeDisplay: {
-    fontWeight: "500",
+    fontWeight: "600",
     color: "#334155",
+    marginHorizontal: 20,
   },
 
   colorRow: {
@@ -220,47 +264,51 @@ const styles = StyleSheet.create({
   },
 
   colorDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    marginRight: 12,
-    borderWidth: 2,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    marginRight: 16,
+    borderWidth: 3,
     borderColor: "transparent",
   },
 
   selectedDot: {
     borderColor: "#000",
-    borderWidth: 3,
   },
 
   previewCard: {
     backgroundColor: "#FFFFFF",
-    padding: 16,
-    borderRadius: 16,
+    padding: 20,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: "#D8E2EF",
     marginTop: 20,
+    width: "100%",
+    alignItems: "center",
   },
 
   previewTitle: {
-    fontWeight: "600",
-    marginBottom: 10,
+    fontWeight: "700",
+    marginBottom: 12,
+    textAlign: "center",
   },
 
   previewText: {
-    marginBottom: 6,
+    marginBottom: 8,
     color: "#334155",
+    textAlign: "center",
   },
 
   previewThemeBox: {
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 12,
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 14,
+    width: "80%",
   },
 
   previewThemeText: {
     color: "#FFFFFF",
-    fontWeight: "600",
+    fontWeight: "700",
     textAlign: "center",
   },
 });
