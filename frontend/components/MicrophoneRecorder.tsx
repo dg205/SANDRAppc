@@ -50,6 +50,15 @@ export default function MicrophoneRecorder({
 
   const active = recording !== null || isListening;
 
+  // Auto-send transcript to parent as soon as transcription completes
+  useEffect(() => {
+    if (pendingResult && pendingResult.text && !active) {
+      const finalText = pendingResult.text.trim();
+      const finalCsv = buildCsv(finalText);
+      onFinish?.({ ...pendingResult, text: finalText, csv: finalCsv });
+    }
+  }, [pendingResult]);
+
   function buildCsv(text: string) {
     const words = text
       .replace(/\n/g, " ")
@@ -523,20 +532,6 @@ export default function MicrophoneRecorder({
         </Text>
       </View>
 
-      {pendingResult && !active && (
-        <TouchableOpacity
-          style={[
-            styles.confirmButton,
-            confirmed && styles.confirmButtonDone,
-          ]}
-          onPress={handleConfirm}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.confirmButtonText}>
-            {confirmed ? "Confirmed ✓" : "Confirm"}
-          </Text>
-        </TouchableOpacity>
-      )}
     </View>
   );
 }

@@ -9,6 +9,8 @@ import {
   Image,
   SafeAreaView,
   ScrollView,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import { router } from "expo-router";
@@ -34,7 +36,7 @@ export default function Values() {
     setAudioUri(audioUri);
     setCsvText(csv);
     setTranscribedText(text);
-    setConfirmed(true);
+    setConfirmed(false);
 
     if (Platform.OS !== "web") {
       await saveAudioFile(audioUri);
@@ -112,7 +114,7 @@ export default function Values() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.inner}>
+      <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Text style={styles.appName}>Sandrapp</Text>
 
         <View style={styles.header}>
@@ -165,6 +167,7 @@ export default function Values() {
               <TouchableOpacity
                 style={styles.confirmButton}
                 onPress={() => {
+                  Keyboard.dismiss();
                   updateProfile({ valuesText: transcribedText, valuesAudioUri: audioUri });
                   setConfirmed(true);
                 }}
@@ -222,7 +225,7 @@ export default function Values() {
             )}
           </View>
         )}
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -234,9 +237,9 @@ const styles = StyleSheet.create({
   },
 
   inner: {
-    flex: 1,
     paddingTop: 18,
     paddingHorizontal: 20,
+    paddingBottom: 40,
     alignItems: "center",
   },
 
