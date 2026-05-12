@@ -1,69 +1,14 @@
-import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator, Alert } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Image, BackHandler } from "react-native";
 import { router } from "expo-router";
-import { addUser, BASE_URL } from "../../utils/api";
-import { useProfile } from "../../utils/ProfileContext";
-import { saveItem, SESSION_KEY } from "../../utils/storage";
 
-export default function Finish() {
-  const [loading, setLoading] = useState(false);
-  const { profile, resetProfile } = useProfile();
+export default function FinishSurvey() {
+  const handleExit = () => {
+    // Android app exit
+    BackHandler.exitApp();
 
-  const handleGoHome = async () => {
-    try {
-      setLoading(true);
-
-      // 1. Save this user to the backend DB
-      await addUser({ ...profile });
-
-      // 2. Get ML matches — backend filters to opposite userType automatically
-      const res = await fetch(`${BASE_URL}/api/match`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentUser: profile }),
-      });
-      if (!res.ok) throw new Error(`Match request failed (${res.status})`);
-      const result = await res.json();
-
-      // Preserve full candidate + features payload for MatchResults
-      const matchesWithFullData = (result.matches ?? []).map((m: any) => ({
-        ...m,
-        candidate: {
-          ...(m.candidate ?? {}),
-          name: m.candidate?.name ?? "Unknown",
-          age: m.candidate?.age ?? 0,
-          location: m.candidate?.location ?? "",
-          userType: m.candidate?.userType ?? "",
-        },
-        features: {
-          ...(m.features ?? {}),
-          shared_interests: m.features?.shared_interests ?? [],
-          shared_values: m.features?.shared_values ?? [],
-          shared_languages: m.features?.shared_languages ?? [],
-        },
-      }));
-
-      // Persist session so dashboard + edit profile can read it later
-      const userName = profile.name ?? "";
-      await saveItem(SESSION_KEY, JSON.stringify({ ...profile, name: userName }));
-      resetProfile();
-
-      // Pass matches + user's name to MatchResults screen
-      router.push({
-        pathname: "/profile/MatchResults",
-        params: {
-          matches: JSON.stringify(matchesWithFullData),
-          userName,
-        },
-      });
-    } catch (err: any) {
-      Alert.alert(
-        "Matchmaking failed",
-        err?.message ?? "Could not reach the backend. Is Flask running?"
-      );
-      router.push("/home");
-    } finally {
-      setLoading(false);
+    // Web browser close attempt
+    if (typeof window !== "undefined") {
+      window.close();
     }
   };
 
@@ -71,23 +16,16 @@ export default function Finish() {
     <View style={styles.container}>
       <Image source={require("../../assets/logo.png")} style={styles.logo} />
 
-      <View style={styles.card}>
-        <Text style={styles.title}>You're all set!</Text>
-        <Text style={styles.caption}>Your profile has been created.</Text>
+      <Text style={styles.title}>Congratulations!</Text>
 
-        <TouchableOpacity
-          style={[styles.nextBtn, loading && styles.nextBtnDisabled]}
-          onPress={handleGoHome}
-          disabled={loading}
-        >
-          {loading ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <ActivityIndicator color="#fff" />
-              <Text style={styles.nextText}>Finding matches…</Text>
-            </View>
-          ) : (
-            <Text style={styles.nextText}>Go to Home →</Text>
-          )}
+      <Text style={styles.subtitle}>
+        You are finished.{"\n"}
+        Thank you for completing the survey 💙
+      </Text>
+
+      <View style={styles.box}>
+        <TouchableOpacity style={styles.button} onPress={handleExit}>
+          <Text style={styles.buttonText}>Exit</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -97,59 +35,54 @@ export default function Finish() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#E4F0FF",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 20,
+    padding: 20,
+    backgroundColor: "#f8fbff",
   },
 
   logo: {
     width: 120,
     height: 120,
-    resizeMode: "contain",
-    marginBottom: 30,
-  },
-
-  card: {
-    backgroundColor: "#fff",
-    width: "100%",
-    padding: 25,
-    borderRadius: 16,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 4,
+    marginBottom: 25,
   },
 
   title: {
-    fontSize: 26,
-    fontWeight: "700",
+    fontSize: 32,
+    fontWeight: "bold",
+    textAlign: "center",
     marginBottom: 10,
-    textAlign: "center",
-    color: "#222",
+    color: "#1E3A5F",
   },
 
-  caption: {
-    fontSize: 16,
-    color: "#555",
-    marginBottom: 25,
-    textAlign: "center",
-  },
-
-  nextBtn: {
-    backgroundColor: "#8AB4FF",
-    paddingVertical: 14,
-    paddingHorizontal: 30,
-    borderRadius: 10,
-  },
-
-  nextBtnDisabled: {
-    opacity: 0.75,
-  },
-
-  nextText: {
+  subtitle: {
     fontSize: 18,
+    textAlign: "center",
+    color: "#4B6FA5",
+    marginBottom: 35,
+    lineHeight: 28,
+  },
+
+  box: {
+    width: "90%",
+    backgroundColor: "#fff",
+    padding: 24,
+    borderRadius: 20,
+    elevation: 3,
+    alignItems: "center",
+  },
+
+  button: {
+    backgroundColor: "#4B6FA5",
+    paddingVertical: 15,
+    paddingHorizontal: 40,
+    borderRadius: 12,
+    width: "100%",
+  },
+
+  buttonText: {
+    fontSize: 18,
+    textAlign: "center",
     color: "#fff",
     fontWeight: "600",
   },
