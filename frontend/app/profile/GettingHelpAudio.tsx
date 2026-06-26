@@ -20,19 +20,23 @@ export default function GettingHelpAudio() {
   const [csvText, setCsvText] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [transcribedText, setTranscribedText] = useState("");
+  const [serverAudioPath, setServerAudioPath] = useState<string | null>(null);
 
   const handleFinish = async ({
     audioUri,
     text,
     csv,
+    uploadedAudioPath,
   }: {
     audioUri: string | null;
     text: string;
     csv: string;
+    uploadedAudioPath?: string | null;
   }) => {
     setAudioUri(audioUri);
     setCsvText(csv);
     setTranscribedText(text);
+    setServerAudioPath(uploadedAudioPath ?? null);
     setConfirmed(true);
 
     if (Platform.OS !== "web") {
@@ -168,7 +172,7 @@ export default function GettingHelpAudio() {
               <TouchableOpacity
                 style={styles.confirmButton}
                 onPress={() => {
-                  updateProfile({ gettingHelpText: transcribedText });
+                  updateProfile({ gettingHelpText: transcribedText, gettingHelpAudioServerPath: serverAudioPath });
                   setConfirmed(true);
                 }}
               >
