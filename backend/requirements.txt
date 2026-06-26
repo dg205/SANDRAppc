@@ -8,3 +8,5 @@ gunicorn
 python-dotenv
 setuptools
 groq
+psycopg2-binary
+requests

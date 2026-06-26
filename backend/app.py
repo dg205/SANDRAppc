@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import sqlite3
+import psycopg2
+import psycopg2.extras
+import requests as req
 import json
 import time
 import os
@@ -37,22 +39,69 @@ def transcribe_with_groq(audio_path):
     return result.text
 
 
-# Use /data on Render (persistent disk) or local directory otherwise
-_BASE_DIR = os.environ.get("DATA_DIR", os.path.dirname(__file__))
-DB_PATH = os.path.join(_BASE_DIR, "candidates.db")
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "trained_model.pkl")
 SCALER_PATH = os.path.join(os.path.dirname(__file__), "scaler.pkl")
-AUDIO_UPLOAD_DIR = os.path.join(_BASE_DIR, "AuidoRecordings")
+AUDIO_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "AudioRecordings")
 os.makedirs(AUDIO_UPLOAD_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
-# Thread-safe DB helper with WAL mode enabled
+# PostgreSQL connection (Supabase)
 # ---------------------------------------------------------------------------
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL")   # allow concurrent reads + writes
-    conn.execute("PRAGMA synchronous=NORMAL") # faster writes, still safe
+    database_url = os.environ.get("DATABASE_URL", "")
+    if database_url:
+        if database_url.startswith("postgres://"):
+            database_url = database_url.replace("postgres://", "postgresql://", 1)
+        conn = psycopg2.connect(database_url)
+    else:
+        conn = psycopg2.connect(
+            host=os.environ.get("DB_HOST"),
+            port=int(os.environ.get("DB_PORT", 5432)),
+            dbname=os.environ.get("DB_NAME", "postgres"),
+            user=os.environ.get("DB_USER", "postgres"),
+            password=os.environ.get("DB_PASSWORD"),
+            sslmode="require"
+        )
     return conn
+
+# ---------------------------------------------------------------------------
+# Supabase Storage upload
+# ---------------------------------------------------------------------------
+def upload_to_supabase_storage(file_path, file_name):
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    service_key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+
+    if not supabase_url or not service_key:
+        print("[storage] SUPABASE_URL or SUPABASE_SERVICE_KEY not set, skipping upload")
+        return None
+
+    ext = os.path.splitext(file_name)[1].lower()
+    content_type_map = {
+        ".m4a": "audio/mp4",
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".webm": "audio/webm",
+        ".ogg": "audio/ogg",
+    }
+    content_type = content_type_map.get(ext, "audio/octet-stream")
+
+    url = f"{supabase_url}/storage/v1/object/survey-audio/{file_name}"
+    headers = {
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": content_type,
+    }
+
+    with open(file_path, "rb") as f:
+        response = req.post(url, headers=headers, data=f)
+
+    if response.status_code in (200, 201):
+        public_url = f"{supabase_url}/storage/v1/object/public/survey-audio/{file_name}"
+        print(f"[storage] uploaded to Supabase: {public_url}")
+        return public_url
+    else:
+        print(f"[storage] upload failed: {response.status_code} {response.text}")
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Load ML model at startup
@@ -182,28 +231,41 @@ def init_db():
     c = conn.cursor()
     c.execute("""
         CREATE TABLE IF NOT EXISTS candidates (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             profile TEXT NOT NULL
         )
     """)
     c.execute("""
         CREATE TABLE IF NOT EXISTS connection_requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             from_user_name TEXT NOT NULL,
             to_user_name TEXT NOT NULL,
             proposed_day TEXT NOT NULL,
             proposed_time TEXT NOT NULL,
             message TEXT DEFAULT '',
             status TEXT DEFAULT 'pending',
-            created_at TEXT DEFAULT (datetime('now'))
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS survey_responses (
+            id SERIAL PRIMARY KEY,
+            user_name TEXT NOT NULL,
+            user_email TEXT,
+            user_type TEXT,
+            question_key TEXT NOT NULL,
+            audio_file_path TEXT,
+            transcription TEXT,
+            structured_answer TEXT,
+            created_at TIMESTAMP DEFAULT NOW()
         )
     """)
     c.execute("SELECT COUNT(*) FROM candidates")
     if c.fetchone()[0] == 0:
         for candidate in SEED_CANDIDATES:
             c.execute(
-                "INSERT INTO candidates (name, profile) VALUES (?, ?)",
+                "INSERT INTO candidates (name, profile) VALUES (%s, %s)",
                 (candidate["name"], json.dumps(candidate))
             )
         print(f"Seeded {len(SEED_CANDIDATES)} profiles ({len(SENIOR_PROFILES)} seniors, {len(COMPANION_PROFILES)} companions)")
@@ -862,10 +924,10 @@ def add_user():
         conn = get_db_connection()
         c = conn.cursor()
         c.execute(
-            "INSERT INTO candidates (name, profile) VALUES (?, ?)",
+            "INSERT INTO candidates (name, profile) VALUES (%s, %s) RETURNING id",
             (name, json.dumps(user_data))
         )
-        new_id = c.lastrowid
+        new_id = c.fetchone()[0]
         conn.commit()
         conn.close()
 
@@ -891,7 +953,7 @@ def update_user(email):
                     target_id = row_id
                     p.update(updates)
                     c.execute(
-                        "UPDATE candidates SET name=?, profile=? WHERE id=?",
+                        "UPDATE candidates SET name=%s, profile=%s WHERE id=%s",
                         (p.get("name", "Unknown"), json.dumps(p), row_id)
                     )
                     break
@@ -962,9 +1024,16 @@ def transcribe_audio():
 
         text = transcribe_with_groq(tmp_path).strip()
 
+        # Upload audio to Supabase Storage and use the public URL if successful
+        final_audio_url = saved_audio_path
+        if saved_audio_path and os.path.exists(saved_audio_path):
+            storage_url = upload_to_supabase_storage(saved_audio_path, os.path.basename(saved_audio_path))
+            if storage_url:
+                final_audio_url = storage_url
+
         return jsonify({
             "text": text,
-            "saved_audio_path": saved_audio_path
+            "saved_audio_path": final_audio_url
         }), 200
 
     except Exception as e:
@@ -986,19 +1055,19 @@ def send_connect_request():
         from_user = data.get("from_user_name", "").strip()
         to_user   = data.get("to_user_name", "").strip()
         day       = data.get("proposed_day", "").strip()
-        time      = data.get("proposed_time", "").strip()
+        proposed_time = data.get("proposed_time", "").strip()
         message   = data.get("message", "").strip()
 
-        if not from_user or not to_user or not day or not time:
+        if not from_user or not to_user or not day or not proposed_time:
             return jsonify({"error": "Missing required fields"}), 400
 
         conn = get_db_connection()
         c = conn.cursor()
         c.execute(
-            "INSERT INTO connection_requests (from_user_name, to_user_name, proposed_day, proposed_time, message) VALUES (?, ?, ?, ?, ?)",
-            (from_user, to_user, day, time, message)
+            "INSERT INTO connection_requests (from_user_name, to_user_name, proposed_day, proposed_time, message) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+            (from_user, to_user, day, proposed_time, message)
         )
-        new_id = c.lastrowid
+        new_id = c.fetchone()[0]
         conn.commit()
         conn.close()
 
@@ -1013,7 +1082,7 @@ def get_connect_requests(user_name):
         conn = get_db_connection()
         c = conn.cursor()
         c.execute(
-            "SELECT id, from_user_name, to_user_name, proposed_day, proposed_time, message, status, created_at FROM connection_requests WHERE to_user_name = ? ORDER BY created_at DESC",
+            "SELECT id, from_user_name, to_user_name, proposed_day, proposed_time, message, status, created_at FROM connection_requests WHERE to_user_name = %s ORDER BY created_at DESC",
             (user_name,)
         )
         rows = c.fetchall()
@@ -1028,7 +1097,7 @@ def get_connect_requests(user_name):
                 "proposed_time": row[4],
                 "message": row[5],
                 "status": row[6],
-                "created_at": row[7],
+                "created_at": str(row[7]),
             }
             for row in rows
         ]
@@ -1049,7 +1118,7 @@ def respond_connect_request(request_id):
         conn = get_db_connection()
         c = conn.cursor()
         c.execute(
-            "UPDATE connection_requests SET status = ? WHERE id = ?",
+            "UPDATE connection_requests SET status = %s WHERE id = %s",
             (status, request_id)
         )
         if c.rowcount == 0:
@@ -1059,6 +1128,76 @@ def respond_connect_request(request_id):
         conn.close()
 
         return jsonify({"status": "updated", "new_status": status}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Survey Response Routes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/survey/save", methods=["POST"])
+def save_survey_responses():
+    try:
+        data = request.json or {}
+        user_name = data.get("user_name", "").strip()
+        user_email = data.get("user_email", "").strip()
+        user_type = data.get("user_type", "").strip()
+        responses = data.get("responses", [])
+
+        if not user_name:
+            return jsonify({"error": "user_name is required"}), 400
+
+        conn = get_db_connection()
+        c = conn.cursor()
+
+        for r in responses:
+            question_key = r.get("question_key", "")
+            audio_file_path = r.get("audio_file_path")
+            transcription = r.get("transcription")
+            structured = r.get("structured_answer")
+            structured_answer = json.dumps(structured) if structured else None
+
+            c.execute("""
+                INSERT INTO survey_responses (user_name, user_email, user_type, question_key, audio_file_path, transcription, structured_answer)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (user_name, user_email, user_type, question_key, audio_file_path, transcription, structured_answer))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({"status": "saved", "count": len(responses)}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/survey/responses/<user_name>", methods=["GET"])
+def get_survey_responses(user_name):
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, question_key, audio_file_path, transcription, structured_answer, created_at
+            FROM survey_responses
+            WHERE user_name = %s
+            ORDER BY id ASC
+        """, (user_name,))
+        rows = c.fetchall()
+        conn.close()
+
+        responses = [
+            {
+                "id": row[0],
+                "question_key": row[1],
+                "audio_file_path": row[2],
+                "transcription": row[3],
+                "structured_answer": json.loads(row[4]) if row[4] else None,
+                "created_at": str(row[5]),
+            }
+            for row in rows
+        ]
+
+        return jsonify({"user_name": user_name, "responses": responses}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

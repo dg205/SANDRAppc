@@ -30,6 +30,14 @@ export type ProfileData = {
   gettingHelpText?: string;
   teachingText?: string;
   meetingText?: string;
+  // server-side audio paths returned from /api/transcribe
+  locationAudioServerPath?: string | null;
+  hobbiesAudioServerPath?: string | null;
+  valuesAudioServerPath?: string | null;
+  bioAudioServerPath?: string | null;
+  gettingHelpAudioServerPath?: string | null;
+  meetingAudioServerPath?: string | null;
+  teachingAudioServerPath?: string | null;
 };
 
 const defaultProfile: ProfileData = {

@@ -20,19 +20,23 @@ export default function TeachingAudio() {
   const [csvText, setCsvText] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [transcribedText, setTranscribedText] = useState("");
+  const [serverAudioPath, setServerAudioPath] = useState<string | null>(null);
 
   const handleFinish = async ({
     audioUri,
     text,
     csv,
+    uploadedAudioPath,
   }: {
     audioUri: string | null;
     text: string;
     csv: string;
+    uploadedAudioPath?: string | null;
   }) => {
     setAudioUri(audioUri);
     setCsvText(csv);
     setTranscribedText(text);
+    setServerAudioPath(uploadedAudioPath ?? null);
     setConfirmed(true);
 
     if (Platform.OS !== "web") {
@@ -169,7 +173,7 @@ This could be a skill, an idea, or something you’re passionate about.
               <TouchableOpacity
                 style={styles.confirmButton}
                 onPress={() => {
-                  updateProfile({ teachingText: transcribedText });
+                  updateProfile({ teachingText: transcribedText, teachingAudioServerPath: serverAudioPath });
                   setConfirmed(true);
                 }}
               >

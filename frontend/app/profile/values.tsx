@@ -21,19 +21,23 @@ export default function Values() {
   const [csvText, setCsvText] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [transcribedText, setTranscribedText] = useState("");
+  const [serverAudioPath, setServerAudioPath] = useState<string | null>(null);
 
   const handleFinish = async ({
     audioUri,
     text,
     csv,
+    uploadedAudioPath,
   }: {
     audioUri: string | null;
     text: string;
     csv: string;
+    uploadedAudioPath?: string | null;
   }) => {
     setAudioUri(audioUri);
     setCsvText(csv);
     setTranscribedText(text);
+    setServerAudioPath(uploadedAudioPath ?? null);
     setConfirmed(true);
 
     if (Platform.OS !== "web") {
@@ -165,7 +169,7 @@ export default function Values() {
               <TouchableOpacity
                 style={styles.confirmButton}
                 onPress={() => {
-                  updateProfile({ valuesText: transcribedText, valuesAudioUri: audioUri });
+                  updateProfile({ valuesText: transcribedText, valuesAudioUri: audioUri, valuesAudioServerPath: serverAudioPath });
                   setConfirmed(true);
                 }}
               >
