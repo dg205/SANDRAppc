@@ -159,9 +159,9 @@ export default function Dashboard() {
           </Text>
           <TouchableOpacity
             style={styles.createBtn}
-            onPress={() => router.push("/Content/Navigation")}
+            onPress={() => router.push("/language")}
           >
-            <Text style={styles.createBtnText}>Go to Dashboard</Text>
+            <Text style={styles.createBtnText}>Create Profile</Text>
           </TouchableOpacity>
         </View>
       ) : (

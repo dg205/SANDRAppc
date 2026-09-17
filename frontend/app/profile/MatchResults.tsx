@@ -238,7 +238,7 @@ export default function MatchResults() {
           style={styles.homeBtn}
           onPress={() =>
             router.push({
-              pathname: "/Content/Navigation",
+              pathname: "/home",
               params: {
                 matches: matchesParam ?? "[]",
                 userName: userName ?? "",

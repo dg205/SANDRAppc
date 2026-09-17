@@ -2,22 +2,14 @@ import os
 import json
 import pickle
 import pandas as pd
-import psycopg2
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
-from app import derive_ml_features, ML_FEATURES, preprocess_profile
+from app import derive_ml_features, ML_FEATURES, preprocess_profile, db_cursor
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "trained_model.pkl")
 SCALER_PATH = os.path.join(os.path.dirname(__file__), "scaler.pkl")
 CSV_PATH = os.path.join(os.path.dirname(__file__), "user_match_pairs_expanded_synthetic.csv")
-
-
-def _get_db_connection():
-    database_url = os.environ.get("DATABASE_URL", "")
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-    return psycopg2.connect(database_url)
 
 
 def retrain_model():
@@ -25,18 +17,16 @@ def retrain_model():
     df_synthetic = pd.read_csv(CSV_PATH)
 
     # 2. Pull real outcomes from the database
-    conn = _get_db_connection()
-    c = conn.cursor()
-    c.execute("""
-        SELECT from_user_name, to_user_name, status
-        FROM connection_requests
-        WHERE status IN ('accepted', 'rejected')
-    """)
-    requests = c.fetchall()
+    with db_cursor() as (conn, c):
+        c.execute("""
+            SELECT from_user_name, to_user_name, status
+            FROM connection_requests
+            WHERE status IN ('accepted', 'rejected')
+        """)
+        requests = c.fetchall()
 
-    c.execute("SELECT name, profile FROM candidates")
-    rows = c.fetchall()
-    conn.close()
+        c.execute("SELECT name, profile FROM candidates")
+        rows = c.fetchall()
 
     profiles = {name: json.loads(profile) for name, profile in rows}
 
