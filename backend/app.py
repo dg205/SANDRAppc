@@ -11,6 +11,7 @@ import re
 import tempfile
 import base64
 import threading
+from contextlib import contextmanager
 import numpy as np
 import pandas as pd
 from werkzeug.utils import secure_filename
@@ -63,6 +64,21 @@ def get_db_connection():
             sslmode="require"
         )
     return conn
+
+@contextmanager
+def db_cursor():
+    """Yield (conn, cursor) and guarantee the connection is closed, even on error.
+
+    Without this, an exception raised between connect and close leaks the
+    connection. That was cheap under SQLite but each connection here is a
+    real network connection to Supabase Postgres against a small connection
+    limit, so leaks can exhaust it and take the whole backend down.
+    """
+    conn = get_db_connection()
+    try:
+        yield conn, conn.cursor()
+    finally:
+        conn.close()
 
 # ---------------------------------------------------------------------------
 # Supabase Storage upload
@@ -227,57 +243,53 @@ SEED_CANDIDATES = SENIOR_PROFILES + COMPANION_PROFILES
 # Database setup
 # ---------------------------------------------------------------------------
 def init_db():
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS candidates (
-            id SERIAL PRIMARY KEY,
-            name TEXT NOT NULL,
-            profile TEXT NOT NULL
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS connection_requests (
-            id SERIAL PRIMARY KEY,
-            from_user_name TEXT NOT NULL,
-            to_user_name TEXT NOT NULL,
-            proposed_day TEXT NOT NULL,
-            proposed_time TEXT NOT NULL,
-            message TEXT DEFAULT '',
-            status TEXT DEFAULT 'pending',
-            created_at TIMESTAMP DEFAULT NOW()
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS survey_responses (
-            id SERIAL PRIMARY KEY,
-            user_name TEXT NOT NULL,
-            user_email TEXT,
-            user_type TEXT,
-            question_key TEXT NOT NULL,
-            audio_file_path TEXT,
-            transcription TEXT,
-            structured_answer TEXT,
-            created_at TIMESTAMP DEFAULT NOW()
-        )
-    """)
-    c.execute("SELECT COUNT(*) FROM candidates")
-    if c.fetchone()[0] == 0:
-        for candidate in SEED_CANDIDATES:
-            c.execute(
-                "INSERT INTO candidates (name, profile) VALUES (%s, %s)",
-                (candidate["name"], json.dumps(candidate))
+    with db_cursor() as (conn, c):
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS candidates (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                profile TEXT NOT NULL
             )
-        print(f"Seeded {len(SEED_CANDIDATES)} profiles ({len(SENIOR_PROFILES)} seniors, {len(COMPANION_PROFILES)} companions)")
-    conn.commit()
-    conn.close()
+        """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS connection_requests (
+                id SERIAL PRIMARY KEY,
+                from_user_name TEXT NOT NULL,
+                to_user_name TEXT NOT NULL,
+                proposed_day TEXT NOT NULL,
+                proposed_time TEXT NOT NULL,
+                message TEXT DEFAULT '',
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS survey_responses (
+                id SERIAL PRIMARY KEY,
+                user_name TEXT NOT NULL,
+                user_email TEXT,
+                user_type TEXT,
+                question_key TEXT NOT NULL,
+                audio_file_path TEXT,
+                transcription TEXT,
+                structured_answer TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        c.execute("SELECT COUNT(*) FROM candidates")
+        if c.fetchone()[0] == 0:
+            for candidate in SEED_CANDIDATES:
+                c.execute(
+                    "INSERT INTO candidates (name, profile) VALUES (%s, %s)",
+                    (candidate["name"], json.dumps(candidate))
+                )
+            print(f"Seeded {len(SEED_CANDIDATES)} profiles ({len(SENIOR_PROFILES)} seniors, {len(COMPANION_PROFILES)} companions)")
+        conn.commit()
 
 def get_all_candidates():
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT profile FROM candidates")
-    rows = c.fetchall()
-    conn.close()
+    with db_cursor() as (conn, c):
+        c.execute("SELECT profile FROM candidates")
+        rows = c.fetchall()
     return [json.loads(row[0]) for row in rows]
 
 def get_candidates_by_type(user_type):
@@ -899,11 +911,9 @@ def calculate_matches():
 @app.route("/api/users", methods=["GET"])
 def list_users():
     try:
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("SELECT id, name, profile FROM candidates")
-        rows = c.fetchall()
-        conn.close()
+        with db_cursor() as (conn, c):
+            c.execute("SELECT id, name, profile FROM candidates")
+            rows = c.fetchall()
 
         users = []
         for row in rows:
@@ -921,15 +931,13 @@ def add_user():
         user_data = request.json or {}
         name = user_data.get("name", "Unknown")
 
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute(
-            "INSERT INTO candidates (name, profile) VALUES (%s, %s) RETURNING id",
-            (name, json.dumps(user_data))
-        )
-        new_id = c.fetchone()[0]
-        conn.commit()
-        conn.close()
+        with db_cursor() as (conn, c):
+            c.execute(
+                "INSERT INTO candidates (name, profile) VALUES (%s, %s) RETURNING id",
+                (name, json.dumps(user_data))
+            )
+            new_id = c.fetchone()[0]
+            conn.commit()
 
         print(f"New user added: {name} ({user_data.get('userType', 'unknown type')})")
         return jsonify({"status": "success", "userId": new_id}), 201
@@ -940,28 +948,26 @@ def add_user():
 def update_user(email):
     try:
         updates = request.json or {}
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("SELECT id, profile FROM candidates")
-        rows = c.fetchall()
-
         target_id = None
-        for row_id, profile_json in rows:
-            try:
-                p = json.loads(profile_json)
-                if p.get("email", "").lower() == email.lower():
-                    target_id = row_id
-                    p.update(updates)
-                    c.execute(
-                        "UPDATE candidates SET name=%s, profile=%s WHERE id=%s",
-                        (p.get("name", "Unknown"), json.dumps(p), row_id)
-                    )
-                    break
-            except Exception:
-                continue
+        with db_cursor() as (conn, c):
+            c.execute("SELECT id, profile FROM candidates")
+            rows = c.fetchall()
 
-        conn.commit()
-        conn.close()
+            for row_id, profile_json in rows:
+                try:
+                    p = json.loads(profile_json)
+                    if p.get("email", "").lower() == email.lower():
+                        target_id = row_id
+                        p.update(updates)
+                        c.execute(
+                            "UPDATE candidates SET name=%s, profile=%s WHERE id=%s",
+                            (p.get("name", "Unknown"), json.dumps(p), row_id)
+                        )
+                        break
+                except Exception:
+                    continue
+
+            conn.commit()
 
         if target_id:
             return jsonify({"status": "updated", "id": target_id}), 200
@@ -1061,15 +1067,13 @@ def send_connect_request():
         if not from_user or not to_user or not day or not proposed_time:
             return jsonify({"error": "Missing required fields"}), 400
 
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute(
-            "INSERT INTO connection_requests (from_user_name, to_user_name, proposed_day, proposed_time, message) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-            (from_user, to_user, day, proposed_time, message)
-        )
-        new_id = c.fetchone()[0]
-        conn.commit()
-        conn.close()
+        with db_cursor() as (conn, c):
+            c.execute(
+                "INSERT INTO connection_requests (from_user_name, to_user_name, proposed_day, proposed_time, message) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                (from_user, to_user, day, proposed_time, message)
+            )
+            new_id = c.fetchone()[0]
+            conn.commit()
 
         return jsonify({"status": "sent", "request_id": new_id}), 201
     except Exception as e:
@@ -1079,14 +1083,12 @@ def send_connect_request():
 @app.route("/api/connect/<user_name>", methods=["GET"])
 def get_connect_requests(user_name):
     try:
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute(
-            "SELECT id, from_user_name, to_user_name, proposed_day, proposed_time, message, status, created_at FROM connection_requests WHERE to_user_name = %s ORDER BY created_at DESC",
-            (user_name,)
-        )
-        rows = c.fetchall()
-        conn.close()
+        with db_cursor() as (conn, c):
+            c.execute(
+                "SELECT id, from_user_name, to_user_name, proposed_day, proposed_time, message, status, created_at FROM connection_requests WHERE to_user_name = %s ORDER BY created_at DESC",
+                (user_name,)
+            )
+            rows = c.fetchall()
 
         requests_list = [
             {
@@ -1115,17 +1117,14 @@ def respond_connect_request(request_id):
         if status not in ("accepted", "rejected"):
             return jsonify({"error": "status must be 'accepted' or 'rejected'"}), 400
 
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute(
-            "UPDATE connection_requests SET status = %s WHERE id = %s",
-            (status, request_id)
-        )
-        if c.rowcount == 0:
-            conn.close()
-            return jsonify({"error": "Request not found"}), 404
-        conn.commit()
-        conn.close()
+        with db_cursor() as (conn, c):
+            c.execute(
+                "UPDATE connection_requests SET status = %s WHERE id = %s",
+                (status, request_id)
+            )
+            if c.rowcount == 0:
+                return jsonify({"error": "Request not found"}), 404
+            conn.commit()
 
         return jsonify({"status": "updated", "new_status": status}), 200
     except Exception as e:
@@ -1148,23 +1147,20 @@ def save_survey_responses():
         if not user_name:
             return jsonify({"error": "user_name is required"}), 400
 
-        conn = get_db_connection()
-        c = conn.cursor()
+        with db_cursor() as (conn, c):
+            for r in responses:
+                question_key = r.get("question_key", "")
+                audio_file_path = r.get("audio_file_path")
+                transcription = r.get("transcription")
+                structured = r.get("structured_answer")
+                structured_answer = json.dumps(structured) if structured else None
 
-        for r in responses:
-            question_key = r.get("question_key", "")
-            audio_file_path = r.get("audio_file_path")
-            transcription = r.get("transcription")
-            structured = r.get("structured_answer")
-            structured_answer = json.dumps(structured) if structured else None
+                c.execute("""
+                    INSERT INTO survey_responses (user_name, user_email, user_type, question_key, audio_file_path, transcription, structured_answer)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (user_name, user_email, user_type, question_key, audio_file_path, transcription, structured_answer))
 
-            c.execute("""
-                INSERT INTO survey_responses (user_name, user_email, user_type, question_key, audio_file_path, transcription, structured_answer)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (user_name, user_email, user_type, question_key, audio_file_path, transcription, structured_answer))
-
-        conn.commit()
-        conn.close()
+            conn.commit()
 
         return jsonify({"status": "saved", "count": len(responses)}), 201
     except Exception as e:
@@ -1174,16 +1170,24 @@ def save_survey_responses():
 @app.route("/api/survey/responses/<user_name>", methods=["GET"])
 def get_survey_responses(user_name):
     try:
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("""
-            SELECT id, question_key, audio_file_path, transcription, structured_answer, created_at
-            FROM survey_responses
-            WHERE user_name = %s
-            ORDER BY id ASC
-        """, (user_name,))
-        rows = c.fetchall()
-        conn.close()
+        # Survey answers can include sensitive personal info, so the caller
+        # must also know the account's email (the same identifier /api/users
+        # already trusts) — not just a name, which is easy to guess/collide on.
+        user_email = request.args.get("user_email", "").strip()
+        if not user_email:
+            return jsonify({"error": "user_email query parameter is required"}), 400
+
+        with db_cursor() as (conn, c):
+            c.execute("""
+                SELECT id, question_key, audio_file_path, transcription, structured_answer, created_at
+                FROM survey_responses
+                WHERE user_name = %s AND lower(user_email) = lower(%s)
+                ORDER BY id ASC
+            """, (user_name, user_email))
+            rows = c.fetchall()
+
+        if not rows:
+            return jsonify({"error": "Not found"}), 404
 
         responses = [
             {
