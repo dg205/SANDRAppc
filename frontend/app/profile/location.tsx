@@ -22,19 +22,23 @@ export default function Location() {
   const [csvText, setCsvText] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [transcribedText, setTranscribedText] = useState("");
+  const [serverAudioPath, setServerAudioPath] = useState<string | null>(null);
 
   const handleFinish = async ({
     audioUri,
     text,
     csv,
+    uploadedAudioPath,
   }: {
     audioUri: string | null;
     text: string;
     csv: string;
+    uploadedAudioPath?: string | null;
   }) => {
     setAudioUri(audioUri);
     setCsvText(csv);
     setTranscribedText(text);
+    setServerAudioPath(uploadedAudioPath ?? null);
     setConfirmed(false);
 
     if (Platform.OS !== "web") {
@@ -163,7 +167,7 @@ export default function Location() {
                 style={styles.confirmButton}
                 onPress={() => {
                   Keyboard.dismiss();
-                  updateProfile({ locationText: transcribedText, locationAudioUri: audioUri });
+                  updateProfile({ locationText: transcribedText, locationAudioUri: audioUri, locationAudioServerPath: serverAudioPath });
                   setConfirmed(true);
                 }}
               >

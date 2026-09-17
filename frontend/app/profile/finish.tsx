@@ -1,69 +1,94 @@
-import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator, Alert } from "react-native";
-import { router } from "expo-router";
-import { addUser, BASE_URL } from "../../utils/api";
-import { useProfile } from "../../utils/ProfileContext";
-import { saveItem, SESSION_KEY } from "../../utils/storage";
+import { useState } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, Image, BackHandler, ActivityIndicator } from "react-native";
+import { useProfile } from "./profileContext";
+import { BASE_URL } from "../../utils/api";
 
-export default function Finish() {
-  const [loading, setLoading] = useState(false);
-  const { profile, resetProfile } = useProfile();
+export default function FinishSurvey() {
+  const { profile } = useProfile();
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleGoHome = async () => {
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    setError("");
+
     try {
-      setLoading(true);
+      const responses = [
+        {
+          question_key: "name_age",
+          structured_answer: { name: profile.name, age: profile.age },
+        },
+        {
+          question_key: "location",
+          audio_file_path: profile.locationAudioServerPath,
+          transcription: profile.locationText,
+          structured_answer: { location: profile.location },
+        },
+        {
+          question_key: "hobbies",
+          audio_file_path: profile.hobbiesAudioServerPath,
+          transcription: profile.hobbiesText,
+          structured_answer: { interests: profile.interests },
+        },
+        {
+          question_key: "values",
+          audio_file_path: profile.valuesAudioServerPath,
+          transcription: profile.valuesText,
+          structured_answer: { values: profile.values },
+        },
+        {
+          question_key: "bio",
+          audio_file_path: profile.bioAudioServerPath,
+          transcription: profile.bio,
+        },
+        {
+          question_key: "getting_help",
+          audio_file_path: profile.gettingHelpAudioServerPath,
+          transcription: profile.gettingHelpText,
+          structured_answer: { helpWith: profile.helpWith },
+        },
+        {
+          question_key: "meeting",
+          audio_file_path: profile.meetingAudioServerPath,
+          transcription: profile.meetingText,
+          structured_answer: { connectionGoals: profile.connectionGoals },
+        },
+        {
+          question_key: "teaching",
+          audio_file_path: profile.teachingAudioServerPath,
+          transcription: profile.teachingText,
+        },
+      ];
 
-      // 1. Save this user to the backend DB
-      await addUser({ ...profile });
-
-      // 2. Get ML matches — backend filters to opposite userType automatically
-      const res = await fetch(`${BASE_URL}/api/match`, {
+      const res = await fetch(`${BASE_URL}/api/survey/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentUser: profile }),
+        body: JSON.stringify({
+          user_name: profile.name,
+          user_email: profile.email,
+          user_type: profile.userType,
+          responses,
+        }),
       });
-      if (!res.ok) throw new Error(`Match request failed (${res.status})`);
-      const result = await res.json();
 
-      // Preserve full candidate + features payload for MatchResults
-      const matchesWithFullData = (result.matches ?? []).map((m: any) => ({
-        ...m,
-        candidate: {
-          ...(m.candidate ?? {}),
-          name: m.candidate?.name ?? "Unknown",
-          age: m.candidate?.age ?? 0,
-          location: m.candidate?.location ?? "",
-          userType: m.candidate?.userType ?? "",
-        },
-        features: {
-          ...(m.features ?? {}),
-          shared_interests: m.features?.shared_interests ?? [],
-          shared_values: m.features?.shared_values ?? [],
-          shared_languages: m.features?.shared_languages ?? [],
-        },
-      }));
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error || "Failed to save survey");
+      }
 
-      // Persist session so dashboard + edit profile can read it later
-      const userName = profile.name ?? "";
-      await saveItem(SESSION_KEY, JSON.stringify({ ...profile, name: userName }));
-      resetProfile();
-
-      // Pass matches + user's name to MatchResults screen
-      router.push({
-        pathname: "/profile/MatchResults",
-        params: {
-          matches: JSON.stringify(matchesWithFullData),
-          userName,
-        },
-      });
-    } catch (err: any) {
-      Alert.alert(
-        "Matchmaking failed",
-        err?.message ?? "Could not reach the backend. Is Flask running?"
-      );
-      router.push("/home");
+      setSubmitted(true);
+    } catch (err) {
+      setError(String(err));
     } finally {
-      setLoading(false);
+      setSubmitting(false);
+    }
+  };
+
+  const handleExit = () => {
+    BackHandler.exitApp();
+    if (typeof window !== "undefined") {
+      window.close();
     }
   };
 
@@ -71,24 +96,39 @@ export default function Finish() {
     <View style={styles.container}>
       <Image source={require("../../assets/logo.png")} style={styles.logo} />
 
-      <View style={styles.card}>
-        <Text style={styles.title}>You're all set!</Text>
-        <Text style={styles.caption}>Your profile has been created.</Text>
+      <Text style={styles.title}>Congratulations!</Text>
 
-        <TouchableOpacity
-          style={[styles.nextBtn, loading && styles.nextBtnDisabled]}
-          onPress={handleGoHome}
-          disabled={loading}
-        >
-          {loading ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <ActivityIndicator color="#fff" />
-              <Text style={styles.nextText}>Finding matches…</Text>
-            </View>
-          ) : (
-            <Text style={styles.nextText}>Go to Home →</Text>
-          )}
-        </TouchableOpacity>
+      <Text style={styles.subtitle}>
+        You are finished.{"\n"}
+        Thank you for completing the survey 💙
+      </Text>
+
+      <View style={styles.box}>
+        {!submitted ? (
+          <>
+            {error !== "" && (
+              <Text style={styles.errorText}>{error}</Text>
+            )}
+            <TouchableOpacity
+              style={[styles.button, submitting && styles.buttonDisabled]}
+              onPress={handleSubmit}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Save My Responses</Text>
+              )}
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <Text style={styles.savedText}>Responses saved!</Text>
+            <TouchableOpacity style={styles.button} onPress={handleExit}>
+              <Text style={styles.buttonText}>Exit</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </View>
   );
@@ -97,60 +137,64 @@ export default function Finish() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#E4F0FF",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 20,
+    padding: 20,
+    backgroundColor: "#f8fbff",
   },
-
   logo: {
     width: 120,
     height: 120,
-    resizeMode: "contain",
-    marginBottom: 30,
-  },
-
-  card: {
-    backgroundColor: "#fff",
-    width: "100%",
-    padding: 25,
-    borderRadius: 16,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-
-  title: {
-    fontSize: 26,
-    fontWeight: "700",
-    marginBottom: 10,
-    textAlign: "center",
-    color: "#222",
-  },
-
-  caption: {
-    fontSize: 16,
-    color: "#555",
     marginBottom: 25,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: "bold",
     textAlign: "center",
+    marginBottom: 10,
+    color: "#1E3A5F",
   },
-
-  nextBtn: {
-    backgroundColor: "#8AB4FF",
-    paddingVertical: 14,
-    paddingHorizontal: 30,
-    borderRadius: 10,
-  },
-
-  nextBtnDisabled: {
-    opacity: 0.75,
-  },
-
-  nextText: {
+  subtitle: {
     fontSize: 18,
+    textAlign: "center",
+    color: "#4B6FA5",
+    marginBottom: 35,
+    lineHeight: 28,
+  },
+  box: {
+    width: "90%",
+    backgroundColor: "#fff",
+    padding: 24,
+    borderRadius: 20,
+    elevation: 3,
+    alignItems: "center",
+    gap: 12,
+  },
+  button: {
+    backgroundColor: "#4B6FA5",
+    paddingVertical: 15,
+    paddingHorizontal: 40,
+    borderRadius: 12,
+    width: "100%",
+    alignItems: "center",
+  },
+  buttonDisabled: {
+    backgroundColor: "#9CA3AF",
+  },
+  buttonText: {
+    fontSize: 18,
+    textAlign: "center",
     color: "#fff",
     fontWeight: "600",
+  },
+  savedText: {
+    fontSize: 16,
+    color: "#27AE60",
+    fontWeight: "600",
+  },
+  errorText: {
+    fontSize: 14,
+    color: "#E74C3C",
+    textAlign: "center",
   },
 });
