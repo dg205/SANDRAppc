@@ -240,7 +240,7 @@ export default function MatchResults() {
             router.push({
               pathname: "/home",
               params: {
-                matches: matchesParam ?? "[]",
+                matches: JSON.stringify(allMatches),
                 userName: userName ?? "",
               },
             })
