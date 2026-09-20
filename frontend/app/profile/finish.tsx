@@ -1,13 +1,20 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Image, BackHandler, ActivityIndicator } from "react-native";
+import { router } from "expo-router";
 import { useProfile } from "./profileContext";
-import { BASE_URL } from "../../utils/api";
+import { BASE_URL, addUser, getTopMatches } from "../../utils/api";
+import { saveItem, SESSION_KEY } from "../../utils/storage";
 
 export default function FinishSurvey() {
   const { profile } = useProfile();
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+  const [fetchingMatches, setFetchingMatches] = useState(false);
+  const [matchesError, setMatchesError] = useState("");
+  // addUser does an unconditional INSERT, so a retry after a failed match
+  // fetch must not register the same person a second time.
+  const userRegistered = useRef(false);
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -80,8 +87,50 @@ export default function FinishSurvey() {
       setSubmitted(true);
     } catch (err) {
       setError(String(err));
+      return;
     } finally {
       setSubmitting(false);
+    }
+
+    await fetchAndShowMatches();
+  };
+
+  const fetchAndShowMatches = async () => {
+    setFetchingMatches(true);
+    setMatchesError("");
+
+    try {
+      const targetUser = { ...profile };
+
+      // Make this user a real candidate so others can be matched with them.
+      if (!userRegistered.current) {
+        await addUser(targetUser);
+        userRegistered.current = true;
+      }
+
+      const result = await getTopMatches(targetUser, []);
+
+      await saveItem(
+        SESSION_KEY,
+        JSON.stringify({
+          name: profile.name,
+          location: profile.location,
+          email: profile.email,
+          userType: profile.userType,
+        })
+      );
+
+      router.replace({
+        pathname: "/profile/MatchResults",
+        params: {
+          matches: JSON.stringify(result.matches),
+          userName: profile.name ?? "",
+        },
+      });
+    } catch (err) {
+      setMatchesError(String(err));
+    } finally {
+      setFetchingMatches(false);
     }
   };
 
@@ -124,7 +173,24 @@ export default function FinishSurvey() {
         ) : (
           <>
             <Text style={styles.savedText}>Responses saved!</Text>
-            <TouchableOpacity style={styles.button} onPress={handleExit}>
+            {fetchingMatches && (
+              <>
+                <ActivityIndicator color="#4B6FA5" />
+                <Text style={styles.findingText}>Finding your matches...</Text>
+              </>
+            )}
+            {matchesError !== "" && (
+              <>
+                <Text style={styles.errorText}>{matchesError}</Text>
+                <TouchableOpacity style={styles.button} onPress={fetchAndShowMatches}>
+                  <Text style={styles.buttonText}>View My Matches</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            <TouchableOpacity
+              style={[styles.button, matchesError !== "" && styles.buttonSecondary]}
+              onPress={handleExit}
+            >
               <Text style={styles.buttonText}>Exit</Text>
             </TouchableOpacity>
           </>
@@ -180,6 +246,14 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     backgroundColor: "#9CA3AF",
+  },
+  buttonSecondary: {
+    backgroundColor: "#9CA3AF",
+  },
+  findingText: {
+    fontSize: 15,
+    color: "#4B6FA5",
+    textAlign: "center",
   },
   buttonText: {
     fontSize: 18,

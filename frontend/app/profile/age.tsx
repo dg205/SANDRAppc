@@ -1,25 +1,36 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ScrollView } from "react-native";
 import { router } from "expo-router";
-import { useProfile } from "./profileContext";
+import { useProfile, type UserType } from "./profileContext";
 
+// Matching only pairs a senior with a companion, so this must be recorded.
+const USER_TYPE_OPTIONS: { value: UserType; label: string }[] = [
+  { value: "senior", label: "I'm looking for companionship" },
+  { value: "companion", label: "I'd like to be a companion" },
+];
 
 export default function Age() {
   const { updateProfile } = useProfile();
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
+  const [userType, setUserType] = useState<UserType>("");
 
   const handleNext = () => {
     const parsed = parseInt(age, 10);
     updateProfile({
       name: name.trim(),
+      userType,
       ...(isNaN(parsed) ? {} : { age: parsed }),
     });
     router.push("/profile/location");
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.scrollBg}
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+    >
       <Image source={require("../../assets/logo.png")} style={styles.logo} />
 
       <Text style={styles.header}>Let's Set Up Your Profile</Text>
@@ -46,19 +57,38 @@ export default function Age() {
           value={age}
           onChangeText={setAge}
         />
+        <Text style={styles.title}>How would you like to use Sandrapp?</Text>
+        <View style={styles.choiceRow}>
+          {USER_TYPE_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              style={[styles.choice, userType === opt.value && styles.choiceActive]}
+              onPress={() => setUserType(opt.value)}
+            >
+              <Text style={[styles.choiceText, userType === opt.value && styles.choiceTextActive]}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-        <TouchableOpacity style={styles.next} onPress={handleNext}>
+        <TouchableOpacity
+          style={[styles.next, !userType && styles.nextDisabled]}
+          onPress={handleNext}
+          disabled={!userType}
+        >
           <Text style={styles.nextText}>Next →</Text>
         </TouchableOpacity>
       </View>
 
       <Text style={styles.helper}>💡 Don't worry - you can always change these answers later</Text>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: "center", backgroundColor: "#E5EEFF", paddingTop: 40 },
+  scrollBg: { flex: 1, backgroundColor: "#E5EEFF" },
+  container: { alignItems: "center", paddingTop: 40, paddingBottom: 40 },
   logo: { width: 80, height: 80 },
   header: { fontSize: 20, marginTop: 10, fontWeight: "600" },
   subheader: { fontSize: 14, color: "#555", marginBottom: 10 },
@@ -83,7 +113,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   question: { fontSize: 16, marginBottom: 10 },
-  title: { fontSize: 20, fontWeight: "600", marginBottom: 10 },
+  title: { fontSize: 20, fontWeight: "600", marginBottom: 10, textAlign: "center" },
   input: {
     width: "100%",
     backgroundColor: "#F1F4FF",
@@ -91,12 +121,25 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 20,
   },
+  choiceRow: { width: "100%", gap: 10, marginBottom: 20 },
+  choice: {
+    width: "100%",
+    backgroundColor: "#F1F4FF",
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#C8D8F0",
+  },
+  choiceActive: { backgroundColor: "#3A74F3", borderColor: "#3A74F3" },
+  choiceText: { textAlign: "center", fontSize: 16, color: "#1A1A2E" },
+  choiceTextActive: { color: "#fff", fontWeight: "600" },
   next: {
     backgroundColor: "#3A74F3",
     padding: 14,
     borderRadius: 12,
     width: "100%",
   },
+  nextDisabled: { backgroundColor: "#9CA3AF" },
   nextText: { textAlign: "center", color: "#fff", fontSize: 18 },
   helper: { marginTop: 15, color: "#333", textAlign: "center", width: "85%" },
 });
