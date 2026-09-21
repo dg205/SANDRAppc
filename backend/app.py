@@ -1097,10 +1097,23 @@ def send_connect_request():
 @app.route("/api/connect/<user_name>", methods=["GET"])
 def get_connect_requests(user_name):
     try:
+        # received (default) = requests sent to this user, sent = requests they
+        # made, all = both. The WHERE text comes from this fixed dict only.
+        direction = request.args.get("direction", "received").strip().lower()
+        filters = {
+            "received": ("to_user_name = %s", (user_name,)),
+            "sent": ("from_user_name = %s", (user_name,)),
+            "all": ("(to_user_name = %s OR from_user_name = %s)", (user_name, user_name)),
+        }
+        if direction not in filters:
+            return jsonify({"error": "direction must be 'received', 'sent' or 'all'"}), 400
+        where, params = filters[direction]
+
         with db_cursor() as (conn, c):
             c.execute(
-                "SELECT id, from_user_name, to_user_name, proposed_day, proposed_time, message, status, created_at FROM connection_requests WHERE to_user_name = %s ORDER BY created_at DESC",
-                (user_name,)
+                "SELECT id, from_user_name, to_user_name, proposed_day, proposed_time, message, status, created_at FROM connection_requests WHERE "
+                + where + " ORDER BY created_at DESC",
+                params
             )
             rows = c.fetchall()
 
