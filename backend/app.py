@@ -276,6 +276,18 @@ def init_db():
                 created_at TIMESTAMP DEFAULT NOW()
             )
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id SERIAL PRIMARY KEY,
+                connection_id INTEGER NOT NULL,
+                sender_name TEXT NOT NULL,
+                body TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        # Private chat content: keep Supabase's public REST API away from it.
+        # The backend's postgres role bypasses row-level security, so it is unaffected.
+        c.execute("ALTER TABLE messages ENABLE ROW LEVEL SECURITY")
         c.execute("SELECT COUNT(*) FROM candidates")
         if c.fetchone()[0] == 0:
             for candidate in SEED_CANDIDATES:
@@ -1154,6 +1166,93 @@ def respond_connect_request(request_id):
             conn.commit()
 
         return jsonify({"status": "updated", "new_status": status}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Message Routes - chat between the two people on an accepted connection
+# ---------------------------------------------------------------------------
+
+MAX_MESSAGE_LENGTH = 2000
+
+def _get_connection_parties(c, connection_id):
+    """Return (from_user_name, to_user_name, status) for a request, or None."""
+    c.execute(
+        "SELECT from_user_name, to_user_name, status FROM connection_requests WHERE id = %s",
+        (connection_id,)
+    )
+    return c.fetchone()
+
+
+@app.route("/api/messages", methods=["POST"])
+def send_message():
+    try:
+        data = request.json or {}
+        try:
+            connection_id = int(data.get("connection_id"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "connection_id is required"}), 400
+        sender_name = str(data.get("sender_name", "")).strip()
+        body = str(data.get("body", "")).strip()
+
+        if not sender_name or not body:
+            return jsonify({"error": "sender_name and body are required"}), 400
+        if len(body) > MAX_MESSAGE_LENGTH:
+            return jsonify({"error": f"Message is too long (max {MAX_MESSAGE_LENGTH} characters)"}), 400
+
+        with db_cursor() as (conn, c):
+            parties = _get_connection_parties(c, connection_id)
+            if parties is None:
+                return jsonify({"error": "Connection not found"}), 404
+            from_user, to_user, status = parties
+            if sender_name not in (from_user, to_user):
+                return jsonify({"error": "Not a participant in this connection"}), 403
+            if status != "accepted":
+                return jsonify({"error": "Messaging opens once the request is accepted"}), 400
+
+            c.execute(
+                "INSERT INTO messages (connection_id, sender_name, body) VALUES (%s, %s, %s) RETURNING id, created_at",
+                (connection_id, sender_name, body)
+            )
+            message_id, created_at = c.fetchone()
+            conn.commit()
+
+        return jsonify({"status": "sent", "message_id": message_id, "created_at": str(created_at)}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/messages/<int:connection_id>", methods=["GET"])
+def get_messages(connection_id):
+    try:
+        # Only the two people in the connection may read it, and the caller must
+        # say who they are (same second-factor idea as the survey answers route).
+        user_name = request.args.get("user_name", "").strip()
+        if not user_name:
+            return jsonify({"error": "user_name query parameter is required"}), 400
+        since_id = request.args.get("since_id", default=0, type=int)
+
+        with db_cursor() as (conn, c):
+            parties = _get_connection_parties(c, connection_id)
+            if parties is None:
+                return jsonify({"error": "Connection not found"}), 404
+            if user_name not in (parties[0], parties[1]):
+                return jsonify({"error": "Not a participant in this connection"}), 403
+
+            c.execute(
+                "SELECT id, sender_name, body, created_at FROM messages WHERE connection_id = %s AND id > %s ORDER BY id ASC",
+                (connection_id, since_id)
+            )
+            rows = c.fetchall()
+
+        return jsonify({
+            "connection_id": connection_id,
+            "messages": [
+                {"id": r[0], "sender_name": r[1], "body": r[2], "created_at": str(r[3])}
+                for r in rows
+            ],
+        }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
