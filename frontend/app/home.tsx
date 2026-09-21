@@ -263,6 +263,18 @@ export default function Dashboard() {
       {/* ── Footer actions ── */}
       <View style={styles.footer}>
         <TouchableOpacity
+          style={styles.requestsBtn}
+          onPress={() =>
+            router.push({
+              pathname: "/profile/Requests",
+              params: { userName: displayName },
+            })
+          }
+        >
+          <Text style={styles.requestsText}>My Requests</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={styles.editProfileBtn}
           onPress={() => router.push("/editProfile")}
         >
@@ -418,6 +430,13 @@ const styles = StyleSheet.create({
 
   /* Footer actions */
   footer: { marginTop: 24, gap: 10 },
+  requestsBtn: {
+    borderRadius: 12,
+    paddingVertical: 14,
+    backgroundColor: "#2F80ED",
+    alignItems: "center",
+  },
+  requestsText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   editProfileBtn: {
     borderRadius: 12,
     paddingVertical: 14,

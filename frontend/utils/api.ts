@@ -79,3 +79,75 @@ export async function addUser(
 
   return JSON.parse(text);
 }
+
+export type ConnectionRequest = {
+  id: number;
+  from_user_name: string;
+  to_user_name: string;
+  proposed_day: string;
+  proposed_time: string;
+  message: string;
+  status: "pending" | "accepted" | "rejected" | string;
+  created_at: string;
+};
+
+export async function sendConnectRequest(request: {
+  from_user_name: string;
+  to_user_name: string;
+  proposed_day: string;
+  proposed_time: string;
+  message?: string;
+}): Promise<{ status: string; request_id: number }> {
+  console.log("Sending connect request to:", `${BASE_URL}/api/connect`);
+
+  const res = await fetch(`${BASE_URL}/api/connect`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+
+  const text = await res.text();
+  console.log("Send connect request status =", res.status);
+
+  if (!res.ok) {
+    throw new Error(`Send request failed (${res.status}): ${text}`);
+  }
+
+  return JSON.parse(text);
+}
+
+// received = requests sent to this user, sent = requests they made, all = both.
+export async function getConnectRequests(
+  userName: string,
+  direction: "received" | "sent" | "all" = "received"
+): Promise<ConnectionRequest[]> {
+  const url = `${BASE_URL}/api/connect/${encodeURIComponent(userName)}?direction=${direction}`;
+  console.log("Fetching connect requests from:", url);
+
+  const res = await fetch(url);
+  const text = await res.text();
+  console.log("Get connect requests status =", res.status);
+
+  if (!res.ok) {
+    throw new Error(`Load requests failed (${res.status}): ${text}`);
+  }
+
+  return JSON.parse(text).requests ?? [];
+}
+
+export async function respondToConnectRequest(
+  requestId: number,
+  status: "accepted" | "rejected"
+): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/connect/${requestId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+
+  console.log("Respond to connect request status =", res.status);
+
+  if (!res.ok) {
+    throw new Error(`Respond failed (${res.status}): ${await res.text()}`);
+  }
+}
