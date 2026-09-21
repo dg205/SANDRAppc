@@ -135,6 +135,60 @@ export async function getConnectRequests(
   return JSON.parse(text).requests ?? [];
 }
 
+export type ChatMessage = {
+  id: number;
+  sender_name: string;
+  body: string;
+  created_at: string;
+};
+
+// The server replies {"error": "..."}; show just the message to the user.
+function serverErrorMessage(text: string): string {
+  try {
+    return JSON.parse(text).error ?? text;
+  } catch {
+    return text;
+  }
+}
+
+export async function sendMessage(
+  connectionId: number,
+  senderName: string,
+  body: string
+): Promise<{ status: string; message_id: number; created_at: string }> {
+  const res = await fetch(`${BASE_URL}/api/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      connection_id: connectionId,
+      sender_name: senderName,
+      body,
+    }),
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(serverErrorMessage(text));
+  }
+  return JSON.parse(text);
+}
+
+// Pass the id of the newest message you already have to fetch only newer ones.
+export async function getMessages(
+  connectionId: number,
+  userName: string,
+  sinceId = 0
+): Promise<ChatMessage[]> {
+  const url = `${BASE_URL}/api/messages/${connectionId}?user_name=${encodeURIComponent(userName)}&since_id=${sinceId}`;
+
+  const res = await fetch(url);
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(serverErrorMessage(text));
+  }
+  return JSON.parse(text).messages ?? [];
+}
+
 export async function respondToConnectRequest(
   requestId: number,
   status: "accepted" | "rejected"
