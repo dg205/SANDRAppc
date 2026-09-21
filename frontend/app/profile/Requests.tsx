@@ -152,19 +152,35 @@ export default function Requests() {
             {connected.length > 0 && (
               <>
                 <Text style={styles.sectionTitle}>Connected</Text>
-                {connected.map((r) => (
-                  <View key={r.id} style={styles.card}>
-                    <View style={styles.rowBetween}>
-                      <Text style={styles.cardName}>
-                        {r.from_user_name === me ? r.to_user_name : r.from_user_name}
-                      </Text>
-                      <View style={[styles.badge, styles.badgeGreen]}>
-                        <Text style={styles.badgeText}>Connected</Text>
+                {connected.map((r) => {
+                  const other = r.from_user_name === me ? r.to_user_name : r.from_user_name;
+                  return (
+                    <View key={r.id} style={styles.card}>
+                      <View style={styles.rowBetween}>
+                        <Text style={styles.cardName}>{other}</Text>
+                        <View style={[styles.badge, styles.badgeGreen]}>
+                          <Text style={styles.badgeText}>Connected</Text>
+                        </View>
                       </View>
+                      <Text style={styles.cardDetail}>{when(r)}</Text>
+                      <TouchableOpacity
+                        style={styles.chatBtn}
+                        onPress={() =>
+                          router.push({
+                            pathname: "/profile/Chat",
+                            params: {
+                              connectionId: String(r.id),
+                              otherUserName: other,
+                              userName: me,
+                            },
+                          })
+                        }
+                      >
+                        <Text style={styles.chatBtnText}>Open Chat</Text>
+                      </TouchableOpacity>
                     </View>
-                    <Text style={styles.cardDetail}>{when(r)}</Text>
-                  </View>
-                ))}
+                  );
+                })}
               </>
             )}
 
@@ -275,6 +291,14 @@ const styles = StyleSheet.create({
   },
   declineText: { color: "#E74C3C", fontSize: 16, fontWeight: "600" },
   btnBusy: { opacity: 0.5 },
+  chatBtn: {
+    marginTop: 14,
+    backgroundColor: "#2F80ED",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  chatBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
 
   badge: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4 },
   badgeGreen: { backgroundColor: "#27AE60" },
