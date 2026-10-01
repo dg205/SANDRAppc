@@ -251,6 +251,13 @@ def init_db():
                 profile TEXT NOT NULL
             )
         """)
+        # auth_user_id/email: added for real auth (Supabase Auth). NULL on the
+        # 68 seed profiles, which aren't accounts - Postgres treats NULL as
+        # distinct in a unique index, so they're unaffected by these.
+        c.execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS auth_user_id UUID")
+        c.execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS email TEXT")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS candidates_auth_user_id_unique_idx ON candidates (auth_user_id)")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS candidates_email_lower_unique_idx ON candidates (lower(email))")
         c.execute("""
             CREATE TABLE IF NOT EXISTS connection_requests (
                 id SERIAL PRIMARY KEY,
@@ -288,6 +295,15 @@ def init_db():
         # Private chat content: keep Supabase's public REST API away from it.
         # The backend's postgres role bypasses row-level security, so it is unaffected.
         c.execute("ALTER TABLE messages ENABLE ROW LEVEL SECURITY")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS push_tokens (
+                id SERIAL PRIMARY KEY,
+                auth_user_id UUID NOT NULL,
+                expo_push_token TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE (auth_user_id, expo_push_token)
+            )
+        """)
         c.execute("SELECT COUNT(*) FROM candidates")
         if c.fetchone()[0] == 0:
             for candidate in SEED_CANDIDATES:
