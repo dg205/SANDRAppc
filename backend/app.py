@@ -12,6 +12,9 @@ import tempfile
 import base64
 import threading
 from contextlib import contextmanager
+from functools import wraps
+import jwt
+from jwt import PyJWKClient
 import numpy as np
 import pandas as pd
 from werkzeug.utils import secure_filename
@@ -117,6 +120,52 @@ def upload_to_supabase_storage(file_path, file_name):
     else:
         print(f"[storage] upload failed: {response.status_code} {response.text}")
         return None
+
+
+# ---------------------------------------------------------------------------
+# Supabase Auth (JWT verification)
+# ---------------------------------------------------------------------------
+# This project's JWT Settings use the newer asymmetric signing keys (ECC
+# P-256 / ES256), verified via the project's JWKS endpoint - not the legacy
+# shared-secret HS256 path. SUPABASE_JWT_SECRET is kept as an opt-in override
+# (unset here) in case the project ever rotates back to a shared secret.
+SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET", "")
+_jwks_client = PyJWKClient(f"{os.environ.get('SUPABASE_URL', '')}/auth/v1/.well-known/jwks.json") \
+    if not SUPABASE_JWT_SECRET and os.environ.get("SUPABASE_URL") else None
+
+def verify_supabase_jwt(token):
+    if SUPABASE_JWT_SECRET:
+        return jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated")
+    if _jwks_client is None:
+        raise RuntimeError("No SUPABASE_JWT_SECRET or SUPABASE_URL configured")
+    key = _jwks_client.get_signing_key_from_jwt(token)
+    return jwt.decode(token, key.key, algorithms=["ES256"], audience="authenticated")
+
+def require_auth(f):
+    """Verify the caller's Supabase access token and pass (user_id, email) as
+    the first two arguments to the wrapped route, ahead of any URL params."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Missing or invalid Authorization header"}), 401
+        try:
+            claims = verify_supabase_jwt(auth_header[7:])
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token expired"}), 401
+        except jwt.InvalidTokenError as e:
+            return jsonify({"error": f"Invalid token: {e}"}), 401
+        user_id, email = claims.get("sub"), (claims.get("email") or "").lower()
+        if not user_id or not email:
+            return jsonify({"error": "Token missing required claims"}), 401
+        return f(user_id, email, *args, **kwargs)
+    return wrapper
+
+def get_candidate_name(c, user_id):
+    """Look up the display name backing an authenticated user's candidate row."""
+    c.execute("SELECT name FROM candidates WHERE auth_user_id = %s", (user_id,))
+    row = c.fetchone()
+    return row[0] if row else None
 
 
 # ---------------------------------------------------------------------------
@@ -332,7 +381,12 @@ def get_all_candidates():
     with db_cursor() as (conn, c):
         c.execute("SELECT profile FROM candidates")
         rows = c.fetchall()
-    return [json.loads(row[0]) for row in rows]
+    candidates = []
+    for row in rows:
+        p = json.loads(row[0])
+        p.pop("email", None)
+        candidates.append(p)
+    return candidates
 
 def get_candidates_by_type(user_type):
     opposite = "companion" if user_type == "senior" else "senior"
@@ -960,6 +1014,7 @@ def list_users():
         users = []
         for row in rows:
             profile = json.loads(row[2])
+            profile.pop("email", None)
             profile["id"] = row[0]
             users.append(profile)
 
@@ -968,52 +1023,72 @@ def list_users():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/users", methods=["POST"])
-def add_user():
+@require_auth
+def add_user(user_id, email):
     try:
         user_data = request.json or {}
         name = user_data.get("name", "Unknown")
+        # email always comes from the verified token, never the client body
+        user_data["email"] = email
 
         with db_cursor() as (conn, c):
-            c.execute(
-                "INSERT INTO candidates (name, profile) VALUES (%s, %s) RETURNING id",
-                (name, json.dumps(user_data))
-            )
+            c.execute("""
+                INSERT INTO candidates (name, profile, auth_user_id, email)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (auth_user_id) DO UPDATE
+                SET name = EXCLUDED.name, profile = EXCLUDED.profile, email = EXCLUDED.email
+                RETURNING id
+            """, (name, json.dumps(user_data), user_id, email))
             new_id = c.fetchone()[0]
             conn.commit()
 
-        print(f"New user added: {name} ({user_data.get('userType', 'unknown type')})")
+        print(f"User upserted: {name} ({user_data.get('userType', 'unknown type')})")
         return jsonify({"status": "success", "userId": new_id}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/users/<path:email>", methods=["PUT"])
-def update_user(email):
+@app.route("/api/users/me", methods=["GET"])
+@require_auth
+def get_my_user(user_id, email):
+    try:
+        with db_cursor() as (conn, c):
+            c.execute("SELECT id, profile FROM candidates WHERE auth_user_id = %s", (user_id,))
+            row = c.fetchone()
+
+        if not row:
+            return jsonify({"status": "not_found"}), 404
+
+        profile = json.loads(row[1])
+        profile["id"] = row[0]
+        return jsonify(profile), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/users/me", methods=["PUT"])
+@require_auth
+def update_my_user(user_id, email):
     try:
         updates = request.json or {}
-        target_id = None
+        updates.pop("email", None)  # email is only ever set from the verified token
+
         with db_cursor() as (conn, c):
-            c.execute("SELECT id, profile FROM candidates")
-            rows = c.fetchall()
+            c.execute("SELECT id, profile FROM candidates WHERE auth_user_id = %s", (user_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({"status": "not_found"}), 404
 
-            for row_id, profile_json in rows:
-                try:
-                    p = json.loads(profile_json)
-                    if p.get("email", "").lower() == email.lower():
-                        target_id = row_id
-                        p.update(updates)
-                        c.execute(
-                            "UPDATE candidates SET name=%s, profile=%s WHERE id=%s",
-                            (p.get("name", "Unknown"), json.dumps(p), row_id)
-                        )
-                        break
-                except Exception:
-                    continue
+            candidate_id, profile_json = row
+            p = json.loads(profile_json)
+            p.update(updates)
+            p["email"] = email
 
+            c.execute(
+                "UPDATE candidates SET name=%s, profile=%s, email=%s WHERE id=%s",
+                (p.get("name", "Unknown"), json.dumps(p), email, candidate_id)
+            )
             conn.commit()
 
-        if target_id:
-            return jsonify({"status": "updated", "id": target_id}), 200
-        return jsonify({"status": "not_found"}), 404
+        return jsonify({"status": "updated", "id": candidate_id}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1097,19 +1172,23 @@ def transcribe_audio():
 # ---------------------------------------------------------------------------
 
 @app.route("/api/connect", methods=["POST"])
-def send_connect_request():
+@require_auth
+def send_connect_request(user_id, email):
     try:
         data = request.json or {}
-        from_user = data.get("from_user_name", "").strip()
         to_user   = data.get("to_user_name", "").strip()
         day       = data.get("proposed_day", "").strip()
         proposed_time = data.get("proposed_time", "").strip()
         message   = data.get("message", "").strip()
 
-        if not from_user or not to_user or not day or not proposed_time:
+        if not to_user or not day or not proposed_time:
             return jsonify({"error": "Missing required fields"}), 400
 
         with db_cursor() as (conn, c):
+            from_user = get_candidate_name(c, user_id)
+            if not from_user:
+                return jsonify({"error": "Complete your profile first"}), 404
+
             c.execute(
                 "INSERT INTO connection_requests (from_user_name, to_user_name, proposed_day, proposed_time, message) VALUES (%s, %s, %s, %s, %s) RETURNING id",
                 (from_user, to_user, day, proposed_time, message)
@@ -1123,7 +1202,8 @@ def send_connect_request():
 
 
 @app.route("/api/connect/<user_name>", methods=["GET"])
-def get_connect_requests(user_name):
+@require_auth
+def get_connect_requests(user_id, email, user_name):
     try:
         # received (default) = requests sent to this user, sent = requests they
         # made, all = both. The WHERE text comes from this fixed dict only.
@@ -1138,6 +1218,12 @@ def get_connect_requests(user_name):
         where, params = filters[direction]
 
         with db_cursor() as (conn, c):
+            caller_name = get_candidate_name(c, user_id)
+            if not caller_name:
+                return jsonify({"error": "Complete your profile first"}), 404
+            if caller_name != user_name:
+                return jsonify({"error": "Forbidden"}), 403
+
             c.execute(
                 "SELECT id, from_user_name, to_user_name, proposed_day, proposed_time, message, status, created_at FROM connection_requests WHERE "
                 + where + " ORDER BY created_at DESC",
@@ -1164,7 +1250,8 @@ def get_connect_requests(user_name):
 
 
 @app.route("/api/connect/<int:request_id>", methods=["PUT"])
-def respond_connect_request(request_id):
+@require_auth
+def respond_connect_request(user_id, email, request_id):
     try:
         data = request.json or {}
         status = data.get("status", "").strip()
@@ -1173,12 +1260,23 @@ def respond_connect_request(request_id):
             return jsonify({"error": "status must be 'accepted' or 'rejected'"}), 400
 
         with db_cursor() as (conn, c):
+            caller_name = get_candidate_name(c, user_id)
+            if not caller_name:
+                return jsonify({"error": "Complete your profile first"}), 404
+
+            c.execute("SELECT to_user_name FROM connection_requests WHERE id = %s", (request_id,))
+            row = c.fetchone()
+            if row is None:
+                return jsonify({"error": "Request not found"}), 404
+            # Only the recipient of the request may accept/reject it - this was
+            # previously unchecked entirely (anyone could flip any request by id).
+            if row[0] != caller_name:
+                return jsonify({"error": "Forbidden"}), 403
+
             c.execute(
                 "UPDATE connection_requests SET status = %s WHERE id = %s",
                 (status, request_id)
             )
-            if c.rowcount == 0:
-                return jsonify({"error": "Request not found"}), 404
             conn.commit()
 
         return jsonify({"status": "updated", "new_status": status}), 200
@@ -1202,22 +1300,26 @@ def _get_connection_parties(c, connection_id):
 
 
 @app.route("/api/messages", methods=["POST"])
-def send_message():
+@require_auth
+def send_message(user_id, email):
     try:
         data = request.json or {}
         try:
             connection_id = int(data.get("connection_id"))
         except (TypeError, ValueError):
             return jsonify({"error": "connection_id is required"}), 400
-        sender_name = str(data.get("sender_name", "")).strip()
         body = str(data.get("body", "")).strip()
 
-        if not sender_name or not body:
-            return jsonify({"error": "sender_name and body are required"}), 400
+        if not body:
+            return jsonify({"error": "body is required"}), 400
         if len(body) > MAX_MESSAGE_LENGTH:
             return jsonify({"error": f"Message is too long (max {MAX_MESSAGE_LENGTH} characters)"}), 400
 
         with db_cursor() as (conn, c):
+            sender_name = get_candidate_name(c, user_id)
+            if not sender_name:
+                return jsonify({"error": "Complete your profile first"}), 404
+
             parties = _get_connection_parties(c, connection_id)
             if parties is None:
                 return jsonify({"error": "Connection not found"}), 404
@@ -1240,16 +1342,16 @@ def send_message():
 
 
 @app.route("/api/messages/<int:connection_id>", methods=["GET"])
-def get_messages(connection_id):
+@require_auth
+def get_messages(user_id, email, connection_id):
     try:
-        # Only the two people in the connection may read it, and the caller must
-        # say who they are (same second-factor idea as the survey answers route).
-        user_name = request.args.get("user_name", "").strip()
-        if not user_name:
-            return jsonify({"error": "user_name query parameter is required"}), 400
         since_id = request.args.get("since_id", default=0, type=int)
 
         with db_cursor() as (conn, c):
+            user_name = get_candidate_name(c, user_id)
+            if not user_name:
+                return jsonify({"error": "Complete your profile first"}), 404
+
             parties = _get_connection_parties(c, connection_id)
             if parties is None:
                 return jsonify({"error": "Connection not found"}), 404
@@ -1296,11 +1398,11 @@ def retrain_endpoint():
 # ---------------------------------------------------------------------------
 
 @app.route("/api/survey/save", methods=["POST"])
-def save_survey_responses():
+@require_auth
+def save_survey_responses(user_id, email):
     try:
         data = request.json or {}
         user_name = data.get("user_name", "").strip()
-        user_email = data.get("user_email", "").strip()
         user_type = data.get("user_type", "").strip()
         responses = data.get("responses", [])
 
@@ -1318,7 +1420,7 @@ def save_survey_responses():
                 c.execute("""
                     INSERT INTO survey_responses (user_name, user_email, user_type, question_key, audio_file_path, transcription, structured_answer)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (user_name, user_email, user_type, question_key, audio_file_path, transcription, structured_answer))
+                """, (user_name, email, user_type, question_key, audio_file_path, transcription, structured_answer))
 
             conn.commit()
 
@@ -1328,22 +1430,19 @@ def save_survey_responses():
 
 
 @app.route("/api/survey/responses/<user_name>", methods=["GET"])
-def get_survey_responses(user_name):
+@require_auth
+def get_survey_responses(user_id, email, user_name):
     try:
-        # Survey answers can include sensitive personal info, so the caller
-        # must also know the account's email (the same identifier /api/users
-        # already trusts) — not just a name, which is easy to guess/collide on.
-        user_email = request.args.get("user_email", "").strip()
-        if not user_email:
-            return jsonify({"error": "user_email query parameter is required"}), 400
-
+        # Survey answers can include sensitive personal info, so the caller's
+        # token email must match the account's stored email - this replaces
+        # the earlier client-supplied ?user_email= query param.
         with db_cursor() as (conn, c):
             c.execute("""
                 SELECT id, question_key, audio_file_path, transcription, structured_answer, created_at
                 FROM survey_responses
                 WHERE user_name = %s AND lower(user_email) = lower(%s)
                 ORDER BY id ASC
-            """, (user_name, user_email))
+            """, (user_name, email))
             rows = c.fetchall()
 
         if not rows:
@@ -1381,8 +1480,9 @@ if __name__ == "__main__":
     print("  GET  /api/candidates          - List all profiles")
     print("  GET  /api/users               - List all users")
     print("  POST /api/match               - Find top matches")
-    print("  POST /api/users               - Add new user")
-    print("  PUT  /api/users/<email>       - Update user profile")
+    print("  POST /api/users               - Add/update current user (auth)")
+    print("  GET  /api/users/me            - Get current user (auth)")
+    print("  PUT  /api/users/me            - Update current user (auth)")
     print("  POST /api/transcribe          - Transcribe audio (Whisper)")
     print("=" * 55 + "\n")
 
