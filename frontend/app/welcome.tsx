@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet, Image } from "react-native";
 import { router } from "expo-router";
+import { TEST_MODE_ENABLED } from "../utils/testMode";
 
 export default function Welcome() {
   return (
@@ -28,6 +29,15 @@ export default function Welcome() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.push("/language")}>
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
+
+        {TEST_MODE_ENABLED && (
+          <TouchableOpacity
+            style={styles.devButton}
+            onPress={() => router.push("/profile/devSeed")}
+          >
+            <Text style={styles.devButtonText}>🛠 Dev Tools</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Footer message */}
@@ -120,5 +130,18 @@ const styles = StyleSheet.create({
   backButtonText: {
     fontSize: 18,
     color: "#1A1A1A",
+  },
+
+  devButton: {
+    width: "90%",
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 12,
+    alignItems: "center",
+  },
+
+  devButtonText: {
+    fontSize: 14,
+    color: "#999",
   },
 });

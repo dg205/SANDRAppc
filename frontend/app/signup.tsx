@@ -14,6 +14,7 @@ import {
 import { router } from "expo-router";
 import { useAuth } from "../utils/AuthContext";
 import { useProfile } from "../utils/ProfileContext";
+import { TEST_MODE_ENABLED } from "../utils/testMode";
 
 export default function Signup() {
   const { signUp } = useAuth();
@@ -30,6 +31,12 @@ export default function Signup() {
     password.length >= 6 &&
     password === confirmPassword &&
     !submitting;
+
+  const fillTestValues = () => {
+    setEmail(`test+${Date.now()}@sandrapp-test.local`);
+    setPassword("TestPass123!");
+    setConfirmPassword("TestPass123!");
+  };
 
   const handleSignUp = async () => {
     setSubmitting(true);
@@ -60,6 +67,15 @@ export default function Signup() {
           <Text style={styles.subtitle}>
             You&apos;ll use this email and password to log back in.
           </Text>
+
+          {TEST_MODE_ENABLED && (
+            <TouchableOpacity
+              onPress={fillTestValues}
+              style={styles.testFillBtn}
+            >
+              <Text style={styles.testFillText}>🧪 Fill test values</Text>
+            </TouchableOpacity>
+          )}
 
           <Text style={styles.label}>Email</Text>
           <TextInput
@@ -179,4 +195,14 @@ const styles = StyleSheet.create({
 
   linkBtn: { marginTop: 16, alignItems: "center" },
   linkText: { color: "#2F80ED", fontSize: 14, fontWeight: "600" },
+
+  testFillBtn: {
+    alignSelf: "flex-start",
+    backgroundColor: "#FFF5E0",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 16,
+  },
+  testFillText: { color: "#A8710A", fontSize: 13, fontWeight: "600" },
 });
