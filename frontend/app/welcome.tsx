@@ -16,14 +16,14 @@ export default function Welcome() {
           style={styles.button}
           onPress={() => router.push("/login")}
         >
-          <Text style={styles.buttonText}>🔐 Login</Text>
+          <Text style={styles.buttonText}>Login</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.button}
           onPress={() => router.push("/signup")}
         >
-          <Text style={styles.buttonText}>✨ Sign Up</Text>
+          <Text style={styles.buttonText}>Sign Up</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.backButton} onPress={() => router.push("/language")}>
@@ -35,7 +35,7 @@ export default function Welcome() {
             style={styles.devButton}
             onPress={() => router.push("/profile/devSeed")}
           >
-            <Text style={styles.devButtonText}>🛠 Dev Tools</Text>
+            <Text style={styles.devButtonText}>Dev Tools</Text>
           </TouchableOpacity>
         )}
       </View>
