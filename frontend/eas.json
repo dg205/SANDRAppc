@@ -21,7 +21,10 @@
       },
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_ENABLE_TEST_MODE": "1"
+        "EXPO_PUBLIC_ENABLE_TEST_MODE": "1",
+        "EXPO_PUBLIC_API_URL": "https://sandrappc.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://nttaxywyncoqbizihxml.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50dGF4eXd5bmNvcWJpemloeG1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0MTI3MTgsImV4cCI6MjA5Nzk4ODcxOH0.-mXk25tuInkEeIa92UZQ7ivwEMCxOaLhxQ6LFu_8nA4"
       }
     },
     "production": {
