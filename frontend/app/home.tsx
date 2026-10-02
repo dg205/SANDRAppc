@@ -1,9 +1,9 @@
 /**
  * home.tsx — Dashboard
- * Greets the user by name and shows top matches.
+ * Greets the user by name and shows their connections and top matches.
  * Provides Logout and Edit Profile actions.
  */
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -13,9 +13,13 @@ import {
   Alert,
   Platform,
 } from "react-native";
-import { useLocalSearchParams, router } from "expo-router";
+import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
 import { getItem, removeItem, SESSION_KEY } from "../utils/storage";
-import { getConnectRequests, respondToConnectRequest } from "../utils/api";
+import {
+  ConnectionRequest,
+  getConnectRequests,
+  respondToConnectRequest,
+} from "../utils/api";
 import { useAuth } from "../utils/AuthContext";
 
 type Match = {
@@ -45,6 +49,7 @@ export default function Dashboard() {
     paramName && paramName.trim() ? paramName.trim() : ""
   );
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
+  const [connections, setConnections] = useState<ConnectionRequest[]>([]);
 
   let matches: Match[] = [];
   try {
@@ -67,22 +72,42 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Fetch pending connection requests for this user
-  useEffect(() => {
-    const userName = paramName?.trim() || displayName;
-    if (!userName) return;
-    getConnectRequests(userName, "received")
-      .then((requests) => {
-        setPendingRequests(requests.filter((r) => r.status === "pending"));
-      })
-      .catch(() => {});
-  }, [displayName]);
+  const me = paramName?.trim() || displayName;
+
+  // Accepted requests (either direction) become connections; pending ones
+  // sent to this user still need an answer.
+  const loadRequests = useCallback(async () => {
+    if (!me) return;
+    try {
+      const requests = await getConnectRequests(me, "all");
+      setConnections(requests.filter((r) => r.status === "accepted"));
+      setPendingRequests(
+        requests.filter((r) => r.to_user_name === me && r.status === "pending")
+      );
+    } catch {}
+  }, [me]);
+
+  // Reload whenever the dashboard comes back into view, so a request accepted
+  // elsewhere shows up here as a connection.
+  useFocusEffect(
+    useCallback(() => {
+      loadRequests();
+    }, [loadRequests])
+  );
 
   const respondToRequest = async (id: number, status: "accepted" | "rejected") => {
     try {
       await respondToConnectRequest(id, status);
-      setPendingRequests((prev) => prev.filter((r) => r.id !== id));
+      await loadRequests();
     } catch {}
+  };
+
+  const openChat = (c: ConnectionRequest) => {
+    const other = c.from_user_name === me ? c.to_user_name : c.from_user_name;
+    router.push({
+      pathname: "/profile/Chat",
+      params: { connectionId: String(c.id), otherUserName: other, userName: me },
+    });
   };
 
   const name = displayName || "Friend";
@@ -141,6 +166,73 @@ export default function Dashboard() {
             : "Complete your profile to find matches near you"}
         </Text>
       </View>
+
+      {/* ── Pending connection requests ── */}
+      {pendingRequests.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Pending Requests</Text>
+          {pendingRequests.map((req) => (
+            <View key={req.id} style={styles.requestCard}>
+              <Text style={styles.requestFrom}>{req.from_user_name}</Text>
+              <Text style={styles.requestDetail}>
+                {req.proposed_day} · {req.proposed_time}
+              </Text>
+              {!!req.message && (
+                <Text style={styles.requestMessage}>"{req.message}"</Text>
+              )}
+              <View style={styles.requestActions}>
+                <TouchableOpacity
+                  style={styles.acceptBtn}
+                  onPress={() => respondToRequest(req.id, "accepted")}
+                >
+                  <Text style={styles.acceptText}>Accept</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.declineBtn}
+                  onPress={() => respondToRequest(req.id, "rejected")}
+                >
+                  <Text style={styles.declineText}>Decline</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+          <View style={styles.sectionGap} />
+        </>
+      )}
+
+      {/* ── Connections ── */}
+      {connections.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Your Connections</Text>
+          {connections.map((c) => {
+            const other = c.from_user_name === me ? c.to_user_name : c.from_user_name;
+            return (
+              <TouchableOpacity
+                key={c.id}
+                activeOpacity={0.85}
+                style={styles.connectionCard}
+                onPress={() => openChat(c)}
+              >
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>
+                    {other.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.connectionInfo}>
+                  <Text style={styles.connectionName}>{other}</Text>
+                  <Text style={styles.connectionDetail}>
+                    {c.proposed_day} · {c.proposed_time}
+                  </Text>
+                </View>
+                <View style={styles.chatPill}>
+                  <Text style={styles.chatPillText}>Chat</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+          <View style={styles.sectionGap} />
+        </>
+      )}
 
       {matches.length === 0 ? (
         /* ── Empty state ── */
@@ -213,38 +305,6 @@ export default function Dashboard() {
                 />
               </View>
             </TouchableOpacity>
-          ))}
-        </>
-      )}
-
-      {/* ── Pending connection requests ── */}
-      {pendingRequests.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>Pending Requests</Text>
-          {pendingRequests.map((req) => (
-            <View key={req.id} style={styles.requestCard}>
-              <Text style={styles.requestFrom}>{req.from_user_name}</Text>
-              <Text style={styles.requestDetail}>
-                {req.proposed_day} · {req.proposed_time}
-              </Text>
-              {!!req.message && (
-                <Text style={styles.requestMessage}>"{req.message}"</Text>
-              )}
-              <View style={styles.requestActions}>
-                <TouchableOpacity
-                  style={styles.acceptBtn}
-                  onPress={() => respondToRequest(req.id, "accepted")}
-                >
-                  <Text style={styles.acceptText}>Accept</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.declineBtn}
-                  onPress={() => respondToRequest(req.id, "rejected")}
-                >
-                  <Text style={styles.declineText}>Decline</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
           ))}
         </>
       )}
@@ -332,6 +392,44 @@ const styles = StyleSheet.create({
     color: "#1A1A2E",
     marginBottom: 12,
   },
+
+  /* Connections */
+  connectionCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: "#27AE60",
+    shadowColor: "#000",
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#E3F6EA",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+  },
+  avatarText: { fontSize: 20, fontWeight: "700", color: "#27AE60" },
+  connectionInfo: { flex: 1 },
+  connectionName: { fontSize: 18, fontWeight: "700", color: "#1A1A2E" },
+  connectionDetail: { fontSize: 14, color: "#555", marginTop: 2 },
+  chatPill: {
+    backgroundColor: "#2F80ED",
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    marginLeft: 10,
+  },
+  chatPillText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  sectionGap: { height: 12 },
 
   /* Match card */
   matchCard: {
