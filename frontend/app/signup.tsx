@@ -73,7 +73,7 @@ export default function Signup() {
               onPress={fillTestValues}
               style={styles.testFillBtn}
             >
-              <Text style={styles.testFillText}>🧪 Fill test values</Text>
+              <Text style={styles.testFillText}>Fill test values</Text>
             </TouchableOpacity>
           )}
 
