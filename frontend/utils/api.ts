@@ -17,10 +17,7 @@ export const BASE_URL: string = CLOUD_URL
 
 console.log("BASE_URL ACTUALLY USED =", BASE_URL);
 
-// Attaches a fresh Supabase access token to a backend request. Not yet used
-// by any call below - existing screens still call fetch()/BASE_URL directly
-// against routes that accept a client-supplied name. Wiring this in is
-// Phase 4 (once login/signup are reachable from the app's real navigation).
+// Attaches a fresh Supabase access token to a backend request.
 export async function authFetch(
   path: string,
   options: RequestInit = {},
@@ -80,7 +77,7 @@ export async function addUser(
 ): Promise<{ status: string; userId: string }> {
   console.log("Posting user to:", `${BASE_URL}/api/users`);
 
-  const res = await fetch(`${BASE_URL}/api/users`, {
+  const res = await authFetch(`/api/users`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(userData),
@@ -110,7 +107,6 @@ export type ConnectionRequest = {
 };
 
 export async function sendConnectRequest(request: {
-  from_user_name: string;
   to_user_name: string;
   proposed_day: string;
   proposed_time: string;
@@ -118,7 +114,7 @@ export async function sendConnectRequest(request: {
 }): Promise<{ status: string; request_id: number }> {
   console.log("Sending connect request to:", `${BASE_URL}/api/connect`);
 
-  const res = await fetch(`${BASE_URL}/api/connect`, {
+  const res = await authFetch(`/api/connect`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
@@ -139,10 +135,10 @@ export async function getConnectRequests(
   userName: string,
   direction: "received" | "sent" | "all" = "received",
 ): Promise<ConnectionRequest[]> {
-  const url = `${BASE_URL}/api/connect/${encodeURIComponent(userName)}?direction=${direction}`;
-  console.log("Fetching connect requests from:", url);
+  const path = `/api/connect/${encodeURIComponent(userName)}?direction=${direction}`;
+  console.log("Fetching connect requests from:", `${BASE_URL}${path}`);
 
-  const res = await fetch(url);
+  const res = await authFetch(path);
   const text = await res.text();
   console.log("Get connect requests status =", res.status);
 
@@ -169,19 +165,15 @@ function serverErrorMessage(text: string): string {
   }
 }
 
+// sender_name is derived server-side from the caller's token, not sent here.
 export async function sendMessage(
   connectionId: number,
-  senderName: string,
   body: string,
 ): Promise<{ status: string; message_id: number; created_at: string }> {
-  const res = await fetch(`${BASE_URL}/api/messages`, {
+  const res = await authFetch(`/api/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      connection_id: connectionId,
-      sender_name: senderName,
-      body,
-    }),
+    body: JSON.stringify({ connection_id: connectionId, body }),
   });
 
   const text = await res.text();
@@ -194,12 +186,11 @@ export async function sendMessage(
 // Pass the id of the newest message you already have to fetch only newer ones.
 export async function getMessages(
   connectionId: number,
-  userName: string,
   sinceId = 0,
 ): Promise<ChatMessage[]> {
-  const url = `${BASE_URL}/api/messages/${connectionId}?user_name=${encodeURIComponent(userName)}&since_id=${sinceId}`;
-
-  const res = await fetch(url);
+  const res = await authFetch(
+    `/api/messages/${connectionId}?since_id=${sinceId}`,
+  );
   const text = await res.text();
   if (!res.ok) {
     throw new Error(serverErrorMessage(text));
@@ -211,7 +202,7 @@ export async function respondToConnectRequest(
   requestId: number,
   status: "accepted" | "rejected",
 ): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/connect/${requestId}`, {
+  const res = await authFetch(`/api/connect/${requestId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),

@@ -57,7 +57,6 @@ export default function ConnectRequest() {
     setError("");
     try {
       await sendConnectRequest({
-        from_user_name: fromUser,
         to_user_name: matchName ?? "",
         proposed_day: day,
         proposed_time: time.trim(),

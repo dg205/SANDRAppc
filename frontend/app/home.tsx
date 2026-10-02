@@ -16,7 +16,8 @@ import {
 import { useLocalSearchParams, router } from "expo-router";
 import MatchMap from "../components/MatchMap";
 import { getItem, removeItem, SESSION_KEY } from "../utils/storage";
-import { BASE_URL } from "../utils/api";
+import { getConnectRequests, respondToConnectRequest } from "../utils/api";
+import { useAuth } from "../utils/AuthContext";
 
 type Match = {
   name: string;
@@ -39,6 +40,7 @@ type PendingRequest = {
 export default function Dashboard() {
   const { matches: matchesParam, userName: paramName } =
     useLocalSearchParams<{ matches?: string; userName?: string }>();
+  const { signOut } = useAuth();
 
   const [displayName, setDisplayName] = useState<string>(
     paramName && paramName.trim() ? paramName.trim() : ""
@@ -72,24 +74,16 @@ export default function Dashboard() {
   useEffect(() => {
     const userName = paramName?.trim() || displayName;
     if (!userName) return;
-    fetch(`${BASE_URL}/api/connect/${encodeURIComponent(userName)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        const pending = (data.requests ?? []).filter(
-          (r: PendingRequest) => r.status === "pending"
-        );
-        setPendingRequests(pending);
+    getConnectRequests(userName, "received")
+      .then((requests) => {
+        setPendingRequests(requests.filter((r) => r.status === "pending"));
       })
       .catch(() => {});
   }, [displayName]);
 
   const respondToRequest = async (id: number, status: "accepted" | "rejected") => {
     try {
-      await fetch(`${BASE_URL}/api/connect/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
+      await respondToConnectRequest(id, status);
       setPendingRequests((prev) => prev.filter((r) => r.id !== id));
     } catch {}
   };
@@ -110,7 +104,8 @@ export default function Dashboard() {
     }
     if (confirmed) {
       await removeItem(SESSION_KEY);
-      router.replace("/language");
+      await signOut();
+      router.replace("/welcome");
     }
   };
 

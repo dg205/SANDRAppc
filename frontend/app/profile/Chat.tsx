@@ -54,7 +54,7 @@ export default function Chat() {
       return;
     }
     try {
-      const fresh = await getMessages(connId, me, newestId.current);
+      const fresh = await getMessages(connId, newestId.current);
       if (fresh.length > 0) {
         newestId.current = Math.max(newestId.current, fresh[fresh.length - 1].id);
         // A poll and a send can overlap, so skip anything we already have.
@@ -87,7 +87,7 @@ export default function Chat() {
     setSending(true);
     setError("");
     try {
-      await sendMessage(connId, me, text);
+      await sendMessage(connId, text);
       setDraft("");
       // Re-fetch instead of appending locally, so a message the other person
       // sent a moment earlier is not skipped over.

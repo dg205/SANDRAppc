@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { getItem, saveItem, SESSION_KEY } from "../utils/storage";
-import { BASE_URL } from "../utils/api";
+import { authFetch } from "../utils/api";
 
 // ── Selectable options ────────────────────────────────────────────────────────
 const INTEREST_OPTIONS = [
@@ -105,17 +105,15 @@ export default function EditProfile() {
       const merged = { ...existing, ...updated };
       await saveItem(SESSION_KEY, JSON.stringify(merged));
 
-      // Sync to backend if email is available
-      if (email) {
-        try {
-          await fetch(`${BASE_URL}/api/users/${encodeURIComponent(email)}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(merged),
-          });
-        } catch {
-          // Backend sync failed — local save is still good
-        }
+      // Sync to backend (identity comes from the signed-in session, not email)
+      try {
+        await authFetch("/api/users/me", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(merged),
+        });
+      } catch {
+        // Backend sync failed — local save is still good
       }
 
       Alert.alert("Saved!", "Your profile has been updated.", [

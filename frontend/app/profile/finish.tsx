@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Image, BackHandler, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { useProfile } from "./profileContext";
-import { BASE_URL, addUser, getTopMatches } from "../../utils/api";
+import { authFetch, addUser, getTopMatches } from "../../utils/api";
 import { saveItem, SESSION_KEY } from "../../utils/storage";
 
 export default function FinishSurvey() {
@@ -68,12 +68,11 @@ export default function FinishSurvey() {
         },
       ];
 
-      const res = await fetch(`${BASE_URL}/api/survey/save`, {
+      const res = await authFetch(`/api/survey/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_name: profile.name,
-          user_email: profile.email,
           user_type: profile.userType,
           responses,
         }),
