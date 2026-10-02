@@ -30,8 +30,6 @@
       },
       "permissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
@@ -57,15 +55,12 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "7a7f5439-523a-42aa-8764-f616db51541c"
+        "projectId": "81081949-4010-4949-ab6c-bc0eab3314fe"
       }
     },
-    "owner": "teddybear3271",
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "updates": {
-      "url": "https://u.expo.dev/7a7f5439-523a-42aa-8764-f616db51541c"
-    }
+    "owner": "dg205"
   }
 }
