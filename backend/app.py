@@ -1392,6 +1392,12 @@ def get_messages(user_id, email, connection_id):
 
 @app.route("/api/retrain", methods=["POST"])
 def retrain_endpoint():
+    # This is hit by a scheduled job, not a logged-in user, so it checks a
+    # shared secret instead of require_auth. Left open if RETRAIN_SECRET
+    # isn't configured (e.g. local dev).
+    secret = os.environ.get("RETRAIN_SECRET", "")
+    if secret and request.headers.get("X-Retrain-Secret", "") != secret:
+        return jsonify({"error": "Forbidden"}), 403
     try:
         from retrain import retrain_model
         result = retrain_model()

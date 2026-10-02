@@ -1,0 +1,18 @@
+name: Scheduled model retrain
+
+"on":
+  schedule:
+    # 9am UTC daily. Adjust as needed - exact timing doesn't matter much,
+    # it just needs to run regularly so real accepted/rejected connection
+    # requests get folded into the model instead of sitting unused.
+    - cron: "0 9 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger retrain on the live backend
+        run: |
+          curl --fail-with-body -sS -X POST "https://sandrappc.onrender.com/api/retrain" \
+            -H "X-Retrain-Secret: ${{ secrets.RETRAIN_SECRET }}"
