@@ -139,11 +139,17 @@ export default function GettingHelpAudio() {
           <View style={styles.progressBarFill} />
         </View>
 
-        <Text style={styles.questionLabel}>Question 6 of 8: Getting Help</Text>
+        <Text style={styles.questionLabel}>Question 7 of 7: Match Considerations</Text>
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-          How do you prefer to receive support from others? What kinds of things help you feel understood, encouraged, or motivated (for example, talking, spending time together, or practical help)?
+            Is there anything important we should consider when suggesting
+            possible social matches?
+          </Text>
+          <Text style={styles.examplePrompts}>
+            Example prompts: transportation needs, language preference,
+            mobility needs, comfort level, caregiver involvement, preferred
+            location, or safety concerns.
           </Text>
 
           <View style={styles.recorderWrap}>
@@ -198,9 +204,9 @@ export default function GettingHelpAudio() {
                 !confirmed && styles.nextButtonDisabled,
               ]}
               disabled={!confirmed}
-              onPress={() => router.push("/profile/TeachingAudio")}
+              onPress={() => router.push("/profile/finish")}
             >
-              <Text style={styles.nextButtonText}>Next →</Text>
+              <Text style={styles.nextButtonText}>Finish →</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -287,7 +293,7 @@ const styles = StyleSheet.create({
   },
 
   progressBarFill: {
-    width: "75%",
+    width: "100%",
     height: "100%",
     backgroundColor: "#2F80ED",
     borderRadius: 999,
@@ -318,6 +324,14 @@ const styles = StyleSheet.create({
     color: "#333",
     textAlign: "center",
     lineHeight: 32,
+    marginBottom: 10,
+  },
+
+  examplePrompts: {
+    fontSize: 15,
+    color: "#666",
+    textAlign: "center",
+    lineHeight: 21,
     marginBottom: 28,
   },
 

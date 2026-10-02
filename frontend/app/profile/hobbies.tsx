@@ -139,11 +139,17 @@ export default function Hobbies() {
           <View style={styles.progressBarFill} />
         </View>
 
-        <Text style={styles.questionLabel}>Question 3 of 8: Hobbies</Text>
+        <Text style={styles.questionLabel}>Question 3 of 7: Social Activities</Text>
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-            What do you enjoy doing in your free time? Tell us about your hobbies, interests, or activities you like.
+            What types of social activities would you like to do with
+            another person or group?
+          </Text>
+          <Text style={styles.examplePrompts}>
+            Example prompts: walking, coffee, conversation, games, religious
+            activities, volunteering, classes, music, art, or other
+            activities.
           </Text>
 
           <View style={styles.recorderWrap}>
@@ -198,7 +204,7 @@ export default function Hobbies() {
                 !confirmed && styles.nextButtonDisabled,
               ]}
               disabled={!confirmed}
-              onPress={() => router.push("/profile/values")}
+              onPress={() => router.push("/profile/MeetingAudio")}
             >
               <Text style={styles.nextButtonText}>Next →</Text>
             </TouchableOpacity>
@@ -287,7 +293,7 @@ const styles = StyleSheet.create({
   },
 
   progressBarFill: {
-    width: "37.5%",
+    width: "42.9%",
     height: "100%",
     backgroundColor: "#2F80ED",
     borderRadius: 999,
@@ -317,6 +323,14 @@ const styles = StyleSheet.create({
     color: "#333",
     textAlign: "center",
     lineHeight: 32,
+    marginBottom: 10,
+  },
+
+  examplePrompts: {
+    fontSize: 15,
+    color: "#666",
+    textAlign: "center",
+    lineHeight: 21,
     marginBottom: 28,
   },
 

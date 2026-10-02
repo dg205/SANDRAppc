@@ -515,6 +515,16 @@ _HELP_KW = {
     'company','conversation','companionship','talking','assistance','assist',
     'helping','help','lifting','moving','repairs','repair','handyman',
     'delivery','mail','bills','paperwork','reading','translation',
+    'mobility','caregiver','caregivers','safety','comfort','comfortable',
+    'language','languages',
+}
+
+_TALK_KW = {
+    'phone','call','calling','text','texting','message','messaging',
+    'video','facetime','zoom',
+    'person','meeting','meet','visit','visiting',
+    'group','activity','activities',
+    'caregiver','family','relative','relatives',
 }
 
 _GOAL_KW = {
@@ -681,12 +691,17 @@ def preprocess_profile(p):
         matched = list(tokens & _GOAL_KW)
         p['connectionGoals'] = matched if matched else ['companionship', 'friendship']
 
+    if not p.get('talkPreferences') and p.get('commPreferenceText'):
+        tokens = set(_kw_extract(p['commPreferenceText']))
+        matched = list(tokens & _TALK_KW)
+        p['talkPreferences'] = matched if matched else ['in-person', 'phone']
+
     if not p.get('talkPreferences'):
         p['talkPreferences'] = ['in-person', 'phone']
 
     if not p.get('faith'):
         combined = ' '.join([
-            p.get('bio', ''), p.get('valuesText', ''),
+            p.get('bio', ''), p.get('commPreferenceText', ''),
             p.get('gettingHelpText', ''), p.get('meetingText', ''),
         ]).lower()
         for faith, keywords in _FAITH_MAP.items():

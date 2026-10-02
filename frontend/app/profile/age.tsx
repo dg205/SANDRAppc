@@ -22,7 +22,7 @@ export default function Age() {
       userType,
       ...(isNaN(parsed) ? {} : { age: parsed }),
     });
-    router.push("/profile/location");
+    router.push("/profile/bioaudio");
   };
 
   return (
@@ -41,7 +41,7 @@ export default function Age() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.question}>Question 1 of 8: About You</Text>
+        <Text style={styles.question}>Question 1 of 7: About You</Text>
         <Text style={styles.title}>What's your name?</Text>
         <TextInput
           style={styles.input}
@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   progressFill: {
-    width: "12%",
+    width: "14%",
     backgroundColor: "#3A74F3",
     height: 6,
     borderRadius: 10,

@@ -21,50 +21,55 @@ export default function FinishSurvey() {
     setError("");
 
     try {
+      // Matches Attachment 3: Voice-Based Social Profile Questions (six
+      // guided voice questions), plus the non-voice name/age setup step.
       const responses = [
         {
           question_key: "name_age",
           structured_answer: { name: profile.name, age: profile.age },
         },
         {
-          question_key: "location",
-          audio_file_path: profile.locationAudioServerPath,
-          transcription: profile.locationText,
-          structured_answer: { location: profile.location },
+          // Q1: Tell us a little about yourself and what you enjoy doing.
+          question_key: "about_and_interests",
+          audio_file_path: profile.bioAudioServerPath,
+          transcription: profile.bio,
         },
         {
-          question_key: "hobbies",
+          // Q2: What types of social activities would you like to do with
+          // another person or group?
+          question_key: "social_activities",
           audio_file_path: profile.hobbiesAudioServerPath,
           transcription: profile.hobbiesText,
           structured_answer: { interests: profile.interests },
         },
         {
-          question_key: "values",
-          audio_file_path: profile.valuesAudioServerPath,
-          transcription: profile.valuesText,
-          structured_answer: { values: profile.values },
-        },
-        {
-          question_key: "bio",
-          audio_file_path: profile.bioAudioServerPath,
-          transcription: profile.bio,
-        },
-        {
-          question_key: "getting_help",
-          audio_file_path: profile.gettingHelpAudioServerPath,
-          transcription: profile.gettingHelpText,
-          structured_answer: { helpWith: profile.helpWith },
-        },
-        {
-          question_key: "meeting",
+          // Q3: What kind of people would you enjoy connecting with?
+          question_key: "connecting_with",
           audio_file_path: profile.meetingAudioServerPath,
           transcription: profile.meetingText,
           structured_answer: { connectionGoals: profile.connectionGoals },
         },
         {
-          question_key: "teaching",
-          audio_file_path: profile.teachingAudioServerPath,
-          transcription: profile.teachingText,
+          // Q4: How do you prefer to communicate with others?
+          question_key: "communication_preference",
+          audio_file_path: profile.commPreferenceAudioServerPath,
+          transcription: profile.commPreferenceText,
+          structured_answer: { talkPreferences: profile.talkPreferences },
+        },
+        {
+          // Q5: When are you usually available for social activities or
+          // conversations?
+          question_key: "availability",
+          audio_file_path: profile.availabilityAudioServerPath,
+          transcription: profile.availabilityText,
+        },
+        {
+          // Q6: Is there anything important we should consider when
+          // suggesting possible social matches?
+          question_key: "match_considerations",
+          audio_file_path: profile.gettingHelpAudioServerPath,
+          transcription: profile.gettingHelpText,
+          structured_answer: { helpWith: profile.helpWith },
         },
       ];
 

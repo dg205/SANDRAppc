@@ -140,13 +140,17 @@ export default function MeetingAudio() {
         </View>
 
         <Text style={styles.questionLabel}>
-          Question 8 of 8: Who You Want to Meet
+          Question 4 of 7: Who You&apos;d Like to Connect With
         </Text>
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-          What kind of people would you like to meet? What types of friends or connections are you hoping to make?
-
+            What kind of people would you enjoy connecting with?
+          </Text>
+          <Text style={styles.examplePrompts}>
+            Example prompts: people with similar interests, people in your
+            age group, people who speak your language, people nearby, people
+            with similar life experiences.
           </Text>
 
           <View style={styles.recorderWrap}>
@@ -201,9 +205,9 @@ export default function MeetingAudio() {
                 !confirmed && styles.nextButtonDisabled,
               ]}
               disabled={!confirmed}
-              onPress={() => router.push("/profile/finish")}
+              onPress={() => router.push("/profile/values")}
             >
-              <Text style={styles.nextButtonText}>Finish →</Text>
+              <Text style={styles.nextButtonText}>Next →</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -290,7 +294,7 @@ const styles = StyleSheet.create({
   },
 
   progressBarFill: {
-    width: "100%",
+    width: "57.1%",
     height: "100%",
     backgroundColor: "#2F80ED",
     borderRadius: 999,
@@ -321,6 +325,14 @@ const styles = StyleSheet.create({
     color: "#333",
     textAlign: "center",
     lineHeight: 32,
+    marginBottom: 10,
+  },
+
+  examplePrompts: {
+    fontSize: 15,
+    color: "#666",
+    textAlign: "center",
+    lineHeight: 21,
     marginBottom: 28,
   },
 

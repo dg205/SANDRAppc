@@ -135,12 +135,17 @@ export default function Values() {
         </View>
 
         <Text style={styles.questionLabel}>
-          Question 4 of 8: What are things you value the most?
+          Question 5 of 7: Communication Preference
         </Text>
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-          What values or principles are most important to you? You can share beliefs, principles, morals, or faith that guide your life.
+            How do you prefer to communicate with others?
+          </Text>
+          <Text style={styles.examplePrompts}>
+            Example prompts: phone call, text message, video call,
+            in-person meeting, group activity, or through a
+            caregiver/family member.
           </Text>
 
           <View style={styles.recorderWrap}>
@@ -172,7 +177,7 @@ export default function Values() {
                 style={styles.confirmButton}
                 onPress={() => {
                   Keyboard.dismiss();
-                  updateProfile({ valuesText: transcribedText, valuesAudioUri: audioUri, valuesAudioServerPath: serverAudioPath });
+                  updateProfile({ commPreferenceText: transcribedText, commPreferenceAudioUri: audioUri, commPreferenceAudioServerPath: serverAudioPath });
                   setConfirmed(true);
                 }}
               >
@@ -195,7 +200,7 @@ export default function Values() {
                 !confirmed && styles.nextButtonDisabled,
               ]}
               disabled={!confirmed}
-              onPress={() => router.push("/profile/bioaudio")}
+              onPress={() => router.push("/profile/TeachingAudio")}
             >
               <Text style={styles.nextButtonText}>Next →</Text>
             </TouchableOpacity>
@@ -291,7 +296,7 @@ const styles = StyleSheet.create({
   },
 
   progressBarFill: {
-    width: "50%",
+    width: "71.4%",
     height: "100%",
     backgroundColor: "#2F80ED",
     borderRadius: 999,
@@ -322,6 +327,14 @@ const styles = StyleSheet.create({
     color: "#333",
     textAlign: "center",
     lineHeight: 32,
+    marginBottom: 10,
+  },
+
+  examplePrompts: {
+    fontSize: 15,
+    color: "#666",
+    textAlign: "center",
+    lineHeight: 21,
     marginBottom: 28,
   },
 

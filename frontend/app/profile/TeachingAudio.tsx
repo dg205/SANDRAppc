@@ -139,12 +139,16 @@ export default function TeachingAudio() {
           <View style={styles.progressBarFill} />
         </View>
 
-        <Text style={styles.questionLabel}>Question 7 of 8: Teaching Others</Text>
+        <Text style={styles.questionLabel}>Question 6 of 7: Availability</Text>
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-          What is something you enjoy teaching others?
-This could be a skill, an idea, or something you’re passionate about.
+            When are you usually available for social activities or
+            conversations?
+          </Text>
+          <Text style={styles.examplePrompts}>
+            Example prompts: mornings, afternoons, evenings, weekdays,
+            weekends, flexible schedule.
           </Text>
 
           <View style={styles.recorderWrap}>
@@ -176,7 +180,7 @@ This could be a skill, an idea, or something you’re passionate about.
                 style={styles.confirmButton}
                 onPress={() => {
                   Keyboard.dismiss();
-                  updateProfile({ teachingText: transcribedText, teachingAudioServerPath: serverAudioPath });
+                  updateProfile({ availabilityText: transcribedText, availabilityAudioServerPath: serverAudioPath });
                   setConfirmed(true);
                 }}
               >
@@ -199,7 +203,7 @@ This could be a skill, an idea, or something you’re passionate about.
                 !confirmed && styles.nextButtonDisabled,
               ]}
               disabled={!confirmed}
-              onPress={() => router.push("/profile/MeetingAudio")}
+              onPress={() => router.push("/profile/GettingHelpAudio")}
             >
               <Text style={styles.nextButtonText}>Next →</Text>
             </TouchableOpacity>
@@ -288,7 +292,7 @@ const styles = StyleSheet.create({
   },
 
   progressBarFill: {
-    width: "87.5%",
+    width: "85.7%",
     height: "100%",
     backgroundColor: "#2F80ED",
     borderRadius: 999,
@@ -319,6 +323,14 @@ const styles = StyleSheet.create({
     color: "#333",
     textAlign: "center",
     lineHeight: 32,
+    marginBottom: 10,
+  },
+
+  examplePrompts: {
+    fontSize: 15,
+    color: "#666",
+    textAlign: "center",
+    lineHeight: 21,
     marginBottom: 28,
   },
 

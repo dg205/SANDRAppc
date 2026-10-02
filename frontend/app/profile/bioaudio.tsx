@@ -139,12 +139,15 @@ export default function BioAudio() {
           <View style={styles.progressBarFill} />
         </View>
 
-        <Text style={styles.questionLabel}>Question 5 of 8: Bio</Text>
+        <Text style={styles.questionLabel}>Question 2 of 7: About You</Text>
 
         <View style={styles.card}>
           <Text style={styles.prompt}>
-          Can you tell us a little about yourself?
-          What are some qualities or experiences that make you who you are? Feel free to share anything about your personality, background, or what you’d like others to know about you.
+            Tell us a little about yourself and what you enjoy doing.
+          </Text>
+          <Text style={styles.examplePrompts}>
+            Example prompts: hobbies, favorite activities, interests, things
+            you like to talk about.
           </Text>
 
           <View style={styles.recorderWrap}>
@@ -201,7 +204,7 @@ export default function BioAudio() {
                 !confirmed && styles.nextButtonDisabled,
               ]}
               disabled={!confirmed}
-              onPress={() => router.push("/profile/GettingHelpAudio")}
+              onPress={() => router.push("/profile/hobbies")}
             >
               <Text style={styles.nextButtonText}>Next →</Text>
             </TouchableOpacity>
@@ -290,7 +293,7 @@ const styles = StyleSheet.create({
   },
 
   progressBarFill: {
-    width: "62.5%",
+    width: "28.6%",
     height: "100%",
     backgroundColor: "#2F80ED",
     borderRadius: 999,
@@ -320,6 +323,14 @@ const styles = StyleSheet.create({
     color: "#333",
     textAlign: "center",
     lineHeight: 32,
+    marginBottom: 10,
+  },
+
+  examplePrompts: {
+    fontSize: 15,
+    color: "#666",
+    textAlign: "center",
+    lineHeight: 21,
     marginBottom: 28,
   },
 

@@ -1,6 +1,6 @@
 /**
  * home.tsx — Dashboard
- * Greets the user by name, shows top matches, and displays a location map.
+ * Greets the user by name and shows top matches.
  * Provides Logout and Edit Profile actions.
  */
 import React, { useEffect, useState } from "react";
@@ -14,7 +14,6 @@ import {
   Platform,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
-import MatchMap from "../components/MatchMap";
 import { getItem, removeItem, SESSION_KEY } from "../utils/storage";
 import { getConnectRequests, respondToConnectRequest } from "../utils/api";
 import { useAuth } from "../utils/AuthContext";
@@ -46,7 +45,6 @@ export default function Dashboard() {
     paramName && paramName.trim() ? paramName.trim() : ""
   );
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
-  const [userCity, setUserCity] = useState<string>("");
 
   let matches: Match[] = [];
   try {
@@ -63,7 +61,6 @@ export default function Dashboard() {
           try {
             const session = JSON.parse(raw);
             if (session?.name) setDisplayName(session.name);
-            if (session?.location) setUserCity(session.location);
           } catch {}
         }
       });
@@ -217,9 +214,6 @@ export default function Dashboard() {
               </View>
             </TouchableOpacity>
           ))}
-
-          {/* ── Map ── */}
-          <MatchMap matches={matches} userLocation={userCity} />
         </>
       )}
 

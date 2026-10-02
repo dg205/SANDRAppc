@@ -21,23 +21,20 @@ export type ProfileData = {
   bio: string;
   email: string;
   // audio transcript fields
-  locationText?: string;
-  locationAudioUri?: string | null;
   hobbiesText?: string;
   hobbiesAudioUri?: string | null;
-  valuesText?: string;
-  valuesAudioUri?: string | null;
+  commPreferenceText?: string;
+  commPreferenceAudioUri?: string | null;
   gettingHelpText?: string;
-  teachingText?: string;
+  availabilityText?: string;
   meetingText?: string;
   // server-side audio paths returned from /api/transcribe
-  locationAudioServerPath?: string | null;
   hobbiesAudioServerPath?: string | null;
-  valuesAudioServerPath?: string | null;
+  commPreferenceAudioServerPath?: string | null;
   bioAudioServerPath?: string | null;
   gettingHelpAudioServerPath?: string | null;
   meetingAudioServerPath?: string | null;
-  teachingAudioServerPath?: string | null;
+  availabilityAudioServerPath?: string | null;
 };
 
 const defaultProfile: ProfileData = {
