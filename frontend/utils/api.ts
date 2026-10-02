@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { ensureFreshToken } from "./auth";
 
 // Priority order:
 //  1. EXPO_PUBLIC_API_URL in your .env file (set this for production/cloud)
@@ -8,14 +9,31 @@ const CLOUD_URL = process.env.EXPO_PUBLIC_API_URL;
 // Only needed for local development (not used when EXPO_PUBLIC_API_URL is set)
 const LAN_IP = process.env.EXPO_PUBLIC_LAN_IP || "192.168.86.30";
 
-export const BASE_URL: string =
-  CLOUD_URL
-    ? CLOUD_URL
-    : Platform.OS === "android" || Platform.OS === "ios"
+export const BASE_URL: string = CLOUD_URL
+  ? CLOUD_URL
+  : Platform.OS === "android" || Platform.OS === "ios"
     ? `http://${LAN_IP}:5000`
     : "http://127.0.0.1:5000";
 
 console.log("BASE_URL ACTUALLY USED =", BASE_URL);
+
+// Attaches a fresh Supabase access token to a backend request. Not yet used
+// by any call below - existing screens still call fetch()/BASE_URL directly
+// against routes that accept a client-supplied name. Wiring this in is
+// Phase 4 (once login/signup are reachable from the app's real navigation).
+export async function authFetch(
+  path: string,
+  options: RequestInit = {},
+): Promise<Response> {
+  const token = await ensureFreshToken();
+  if (!token) {
+    throw new Error("Not signed in");
+  }
+  return fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: { ...(options.headers ?? {}), Authorization: `Bearer ${token}` },
+  });
+}
 
 export async function checkHealth(): Promise<{ status: string }> {
   console.log("Checking health at:", `${BASE_URL}/health`);
@@ -35,7 +53,7 @@ export async function checkHealth(): Promise<{ status: string }> {
 
 export async function getTopMatches(
   targetUser: Record<string, any>,
-  candidates: Record<string, any>[]
+  candidates: Record<string, any>[],
 ): Promise<{ matches: any[]; total_candidates: number }> {
   console.log("Posting matches to:", `${BASE_URL}/api/match`);
 
@@ -58,7 +76,7 @@ export async function getTopMatches(
 }
 
 export async function addUser(
-  userData: Record<string, any>
+  userData: Record<string, any>,
 ): Promise<{ status: string; userId: string }> {
   console.log("Posting user to:", `${BASE_URL}/api/users`);
 
@@ -119,7 +137,7 @@ export async function sendConnectRequest(request: {
 // received = requests sent to this user, sent = requests they made, all = both.
 export async function getConnectRequests(
   userName: string,
-  direction: "received" | "sent" | "all" = "received"
+  direction: "received" | "sent" | "all" = "received",
 ): Promise<ConnectionRequest[]> {
   const url = `${BASE_URL}/api/connect/${encodeURIComponent(userName)}?direction=${direction}`;
   console.log("Fetching connect requests from:", url);
@@ -154,7 +172,7 @@ function serverErrorMessage(text: string): string {
 export async function sendMessage(
   connectionId: number,
   senderName: string,
-  body: string
+  body: string,
 ): Promise<{ status: string; message_id: number; created_at: string }> {
   const res = await fetch(`${BASE_URL}/api/messages`, {
     method: "POST",
@@ -177,7 +195,7 @@ export async function sendMessage(
 export async function getMessages(
   connectionId: number,
   userName: string,
-  sinceId = 0
+  sinceId = 0,
 ): Promise<ChatMessage[]> {
   const url = `${BASE_URL}/api/messages/${connectionId}?user_name=${encodeURIComponent(userName)}&since_id=${sinceId}`;
 
@@ -191,7 +209,7 @@ export async function getMessages(
 
 export async function respondToConnectRequest(
   requestId: number,
-  status: "accepted" | "rejected"
+  status: "accepted" | "rejected",
 ): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/connect/${requestId}`, {
     method: "PUT",

@@ -20,7 +20,7 @@ export default function Welcome() {
 
         <TouchableOpacity
           style={styles.button}
-          onPress={() => router.push("/language")}
+          onPress={() => router.push("/signup")}
         >
           <Text style={styles.buttonText}>✨ Sign Up</Text>
         </TouchableOpacity>

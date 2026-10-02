@@ -1,4 +1,3 @@
-// app/login.tsx
 import React, { useState } from "react";
 import {
   View,
@@ -14,24 +13,31 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { useAuth } from "../utils/AuthContext";
+import { useProfile } from "../utils/ProfileContext";
 
-export default function Login() {
-  const { signIn } = useAuth();
+export default function Signup() {
+  const { signUp } = useAuth();
+  const { updateProfile } = useProfile();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const canSubmit =
-    email.trim().length > 3 && password.length > 0 && !submitting;
+    email.trim().length > 3 &&
+    password.length >= 6 &&
+    password === confirmPassword &&
+    !submitting;
 
-  const handleLogin = async () => {
+  const handleSignUp = async () => {
     setSubmitting(true);
     setError("");
     try {
-      await signIn(email.trim(), password);
-      router.replace("/home");
+      await signUp(email.trim(), password);
+      updateProfile({ email: email.trim() });
+      router.replace("/language");
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));
     } finally {
@@ -50,8 +56,10 @@ export default function Login() {
         </TouchableOpacity>
 
         <View style={styles.card}>
-          <Text style={styles.title}>Log in</Text>
-          <Text style={styles.subtitle}>Welcome back.</Text>
+          <Text style={styles.title}>Create your account</Text>
+          <Text style={styles.subtitle}>
+            You&apos;ll use this email and password to log back in.
+          </Text>
 
           <Text style={styles.label}>Email</Text>
           <TextInput
@@ -68,10 +76,20 @@ export default function Login() {
           <Text style={styles.label}>Password</Text>
           <TextInput
             style={styles.input}
-            placeholder="Your password"
+            placeholder="At least 6 characters"
             placeholderTextColor="#999"
             value={password}
             onChangeText={setPassword}
+            secureTextEntry
+          />
+
+          <Text style={styles.label}>Confirm Password</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Re-enter your password"
+            placeholderTextColor="#999"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
             secureTextEntry
           />
 
@@ -79,23 +97,21 @@ export default function Login() {
 
           <TouchableOpacity
             style={[styles.primaryBtn, !canSubmit && styles.primaryBtnDisabled]}
-            onPress={handleLogin}
+            onPress={handleSignUp}
             disabled={!canSubmit}
           >
             {submitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.primaryBtnText}>Log In</Text>
+              <Text style={styles.primaryBtnText}>Sign Up</Text>
             )}
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => router.replace("/signup")}
+            onPress={() => router.replace("/login")}
             style={styles.linkBtn}
           >
-            <Text style={styles.linkText}>
-              Don&apos;t have an account? Sign up
-            </Text>
+            <Text style={styles.linkText}>Already have an account? Log in</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
