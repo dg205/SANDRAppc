@@ -10,4 +10,3 @@ setuptools
 groq
 psycopg2-binary
 requests
-PyJWT[crypto]>=2.8
