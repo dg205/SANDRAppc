@@ -12,11 +12,13 @@ import {
   Platform,
   StatusBar,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useAuth } from "../utils/AuthContext";
 
 export default function Login() {
   const { signIn } = useAuth();
+  const { expired } = useLocalSearchParams<{ expired?: string }>();
+  const sessionExpired = expired === "1";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -45,13 +47,24 @@ export default function Login() {
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        {/* After an expiry the screen behind this one needs a login, so
+            Back goes to the welcome screen instead. */}
+        <TouchableOpacity
+          onPress={() =>
+            sessionExpired ? router.replace("/welcome") : router.back()
+          }
+          style={styles.backBtn}
+        >
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
 
         <View style={styles.card}>
           <Text style={styles.title}>Log in</Text>
-          <Text style={styles.subtitle}>Welcome back.</Text>
+          <Text style={styles.subtitle}>
+            {sessionExpired
+              ? "Your session expired. Please log in again."
+              : "Welcome back."}
+          </Text>
 
           <Text style={styles.label}>Email</Text>
           <TextInput

@@ -5,7 +5,9 @@ import React, {
   useState,
   type ReactNode,
 } from "react";
+import { router } from "expo-router";
 import * as auth from "./auth";
+import { removeItem, SESSION_KEY } from "./storage";
 
 type AuthContextType = {
   session: auth.AuthSession | null;
@@ -22,10 +24,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    auth.restoreSession().then((restored) => {
-      setSession(restored);
+    // An expired session found during startup just leaves the user signed
+    // out (index.tsx routes them to /welcome); one that expires while they're
+    // using the app sends them straight to log in again.
+    let restored = false;
+    auth.setSessionExpiredHandler(() => {
+      setSession(null);
+      removeItem(SESSION_KEY);
+      if (restored) {
+        router.replace({ pathname: "/login", params: { expired: "1" } });
+      }
+    });
+
+    auth.restoreSession().then((s) => {
+      restored = true;
+      setSession(s);
       setLoading(false);
     });
+
+    return () => auth.setSessionExpiredHandler(null);
   }, []);
 
   const signIn = async (email: string, password: string) => {

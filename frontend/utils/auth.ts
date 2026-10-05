@@ -125,6 +125,23 @@ export async function signOut(): Promise<void> {
   }
 }
 
+let onSessionExpired: (() => void) | null = null;
+
+/** Register a callback for when the stored session stops working. */
+export function setSessionExpiredHandler(handler: (() => void) | null): void {
+  onSessionExpired = handler;
+}
+
+/**
+ * Drop a session that Supabase or the backend has rejected, and tell the app
+ * so it can send the user back to log in.
+ */
+export async function expireSession(): Promise<void> {
+  const hadSession = (await secureGet(SESSION_KEY)) !== null;
+  await secureDelete(SESSION_KEY);
+  if (hadSession) onSessionExpired?.();
+}
+
 async function refresh(session: AuthSession): Promise<AuthSession | null> {
   try {
     const res = await fetch(
@@ -139,7 +156,7 @@ async function refresh(session: AuthSession): Promise<AuthSession | null> {
       },
     );
     if (!res.ok) {
-      await secureDelete(SESSION_KEY);
+      await expireSession();
       return null;
     }
     const next = toSession(await res.json());

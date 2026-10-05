@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { ensureFreshToken } from "./auth";
+import { ensureFreshToken, expireSession } from "./auth";
 
 // Priority order:
 //  1. EXPO_PUBLIC_API_URL in your .env file (set this for production/cloud)
@@ -26,10 +26,15 @@ export async function authFetch(
   if (!token) {
     throw new Error("Not signed in");
   }
-  return fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: { ...(options.headers ?? {}), Authorization: `Bearer ${token}` },
   });
+  // The backend only answers 401 for a missing, expired or invalid token.
+  if (res.status === 401) {
+    await expireSession();
+  }
+  return res;
 }
 
 export async function checkHealth(): Promise<{ status: string }> {
