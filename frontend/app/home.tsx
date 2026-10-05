@@ -12,24 +12,20 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
 import { getItem, removeItem, SESSION_KEY } from "../utils/storage";
 import {
   ConnectionRequest,
+  Match,
   getConnectRequests,
+  getMyProfile,
+  getTopMatches,
+  normalizeMatches,
   respondToConnectRequest,
 } from "../utils/api";
 import { useAuth } from "../utils/AuthContext";
-
-type Match = {
-  name: string;
-  age: number;
-  location: string;
-  score: number;
-  userType?: string;
-  [key: string]: any;
-};
 
 type PendingRequest = {
   id: number;
@@ -51,12 +47,42 @@ export default function Dashboard() {
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [connections, setConnections] = useState<ConnectionRequest[]>([]);
 
-  let matches: Match[] = [];
-  try {
-    matches = matchesParam ? JSON.parse(matchesParam) : [];
-  } catch {
-    matches = [];
-  }
+  const [matches, setMatches] = useState<Match[]>(() => {
+    try {
+      return matchesParam ? normalizeMatches(JSON.parse(matchesParam)) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loadingMatches, setLoadingMatches] = useState(matches.length === 0);
+  const [matchesError, setMatchesError] = useState("");
+
+  // Matches are only passed in right after the survey. On login or app
+  // reopen, rebuild them from the user's saved profile.
+  const loadMatches = useCallback(async () => {
+    setLoadingMatches(true);
+    setMatchesError("");
+    try {
+      const profile = await getMyProfile();
+      if (!profile) {
+        setMatches([]);
+        return;
+      }
+      if (profile.name) setDisplayName((prev) => prev || profile.name);
+      const result = await getTopMatches(profile, []);
+      setMatches(normalizeMatches(result.matches));
+    } catch {
+      setMatchesError("We couldn't load your matches right now.");
+    } finally {
+      setLoadingMatches(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (matches.length === 0) loadMatches();
+    // Only on first mount; loadMatches is stable and matches changes on load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Load name from persistent storage if not passed via params
   useEffect(() => {
@@ -161,9 +187,11 @@ export default function Dashboard() {
         </View>
         <Text style={styles.greeting}>Hello, {name}!</Text>
         <Text style={styles.heroSub}>
-          {matches.length > 0
-            ? "Your top 3 candidates are ready"
-            : "Complete your profile to find matches near you"}
+          {loadingMatches
+            ? "Finding your matches…"
+            : matches.length > 0
+              ? "Your top 3 candidates are ready"
+              : "Complete your profile to find matches near you"}
         </Text>
       </View>
 
@@ -234,7 +262,21 @@ export default function Dashboard() {
         </>
       )}
 
-      {matches.length === 0 ? (
+      {loadingMatches ? (
+        <View style={styles.emptyCard}>
+          <ActivityIndicator size="large" color="#2F80ED" />
+          <Text style={[styles.emptyText, styles.loadingText]}>
+            Loading your matches…
+          </Text>
+        </View>
+      ) : matchesError ? (
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyText}>{matchesError}</Text>
+          <TouchableOpacity style={styles.createBtn} onPress={loadMatches}>
+            <Text style={styles.createBtnText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      ) : matches.length === 0 ? (
         /* ── Empty state ── */
         <View style={styles.emptyCard}>
           <Text style={styles.emptyText}>
@@ -264,8 +306,8 @@ export default function Dashboard() {
                   params: {
                     match: JSON.stringify(m),
                     matchIndex: String(i),
-                    matches: matchesParam ?? "[]",
-                    userName: displayName,
+                    matches: JSON.stringify(matches),
+                    userName: me,
                   },
                 })
               }
@@ -471,6 +513,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   emptyText: { fontSize: 16, color: "#555", textAlign: "center", marginBottom: 18, lineHeight: 24 },
+  loadingText: { marginTop: 12, marginBottom: 0 },
   createBtn: {
     backgroundColor: "#2F80ED",
     borderRadius: 10,

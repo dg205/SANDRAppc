@@ -72,6 +72,41 @@ export async function getTopMatches(
   return JSON.parse(text);
 }
 
+export type Match = {
+  name: string;
+  age: number;
+  location: string;
+  score: number;
+  userType?: string;
+  candidate?: Record<string, any>;
+  features?: Record<string, any>;
+  [key: string]: any;
+};
+
+// /api/match nests each person under `candidate`; lift the fields the
+// screens display to the top level.
+export function normalizeMatches(raw: Record<string, any>[]): Match[] {
+  return raw.map((m) => ({
+    ...m,
+    name: m.name ?? m.candidate?.name ?? "Unknown",
+    age: m.age ?? m.candidate?.age ?? 0,
+    location: m.location ?? m.candidate?.location ?? "",
+    score: m.score ?? 0,
+    userType: m.userType ?? m.candidate?.userType ?? "",
+  }));
+}
+
+// The signed-in user's saved profile, or null if they haven't made one yet.
+export async function getMyProfile(): Promise<Record<string, any> | null> {
+  const res = await authFetch(`/api/users/me`);
+  if (res.status === 404) return null;
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`Load profile failed (${res.status}): ${text}`);
+  }
+  return JSON.parse(text);
+}
+
 export async function addUser(
   userData: Record<string, any>,
 ): Promise<{ status: string; userId: string }> {

@@ -8,38 +8,7 @@ import {
   SafeAreaView,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
-
-type RawMatch = {
-  name?: string;
-  age?: number;
-  location?: string;
-  score?: number;
-  userType?: string;
-  candidate?: {
-    name?: string;
-    age?: number;
-    location?: string;
-    userType?: string;
-  };
-  features?: {
-    shared_interests?: string[];
-    shared_values?: string[];
-    shared_languages?: string[];
-    [key: string]: any;
-  };
-  [key: string]: any;
-};
-
-type Match = {
-  name: string;
-  age: number;
-  location: string;
-  score: number;
-  userType?: string;
-  candidate?: RawMatch["candidate"];
-  features?: RawMatch["features"];
-  [key: string]: any;
-};
+import { Match, normalizeMatches } from "../../utils/api";
 
 export default function MatchResults() {
   const { matches: matchesParam, userName } = useLocalSearchParams<{
@@ -47,18 +16,10 @@ export default function MatchResults() {
     userName?: string;
   }>();
 
-  const allMatches: Match[] = useMemo(() => {
-    const parsed: RawMatch[] = matchesParam ? JSON.parse(matchesParam) : [];
-
-    return parsed.map((m) => ({
-      ...m,
-      name: m.name ?? m.candidate?.name ?? "Unknown",
-      age: m.age ?? m.candidate?.age ?? 0,
-      location: m.location ?? m.candidate?.location ?? "",
-      score: m.score ?? 0,
-      userType: m.userType ?? m.candidate?.userType ?? "",
-    }));
-  }, [matchesParam]);
+  const allMatches: Match[] = useMemo(
+    () => normalizeMatches(matchesParam ? JSON.parse(matchesParam) : []),
+    [matchesParam]
+  );
 
   const topMatches = allMatches.slice(0, 3);
   const otherMatches = allMatches.slice(3);
