@@ -25,6 +25,22 @@ const DAYS = [
   "Sunday",
 ];
 
+// Picked from buttons rather than typed, so every request stores a time
+// like "2:00 PM" instead of whatever was typed ("2", "afternoon", ...).
+const TIMES = [
+  "9:00 AM",
+  "10:00 AM",
+  "11:00 AM",
+  "12:00 PM",
+  "1:00 PM",
+  "2:00 PM",
+  "3:00 PM",
+  "4:00 PM",
+  "5:00 PM",
+  "6:00 PM",
+  "7:00 PM",
+];
+
 export default function ConnectRequest() {
   const { matchName, fromUserName } = useLocalSearchParams<{
     matchName?: string;
@@ -50,7 +66,7 @@ export default function ConnectRequest() {
     });
   }, []);
 
-  const canSend = !!fromUser && !!matchName && !!day && !!time.trim() && !sending;
+  const canSend = !!fromUser && !!matchName && !!day && !!time && !sending;
 
   const handleSend = async () => {
     setSending(true);
@@ -59,7 +75,7 @@ export default function ConnectRequest() {
       await sendConnectRequest({
         to_user_name: matchName ?? "",
         proposed_day: day,
-        proposed_time: time.trim(),
+        proposed_time: time,
         message: message.trim(),
       });
       setSent(true);
@@ -119,13 +135,19 @@ export default function ConnectRequest() {
             </View>
 
             <Text style={styles.label}>Time</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="For example: 2:00 PM"
-              placeholderTextColor="#999"
-              value={time}
-              onChangeText={setTime}
-            />
+            <View style={styles.chips}>
+              {TIMES.map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.chip, time === t && styles.chipActive]}
+                  onPress={() => setTime(t)}
+                >
+                  <Text style={[styles.chipText, time === t && styles.chipTextActive]}>
+                    {t}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             <Text style={styles.label}>Message (optional)</Text>
             <TextInput

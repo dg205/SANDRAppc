@@ -194,9 +194,11 @@ export default function Dashboard() {
         <Text style={styles.heroSub}>
           {loadingMatches
             ? "Finding your matches…"
-            : matches.length > 0
-              ? "Your top 3 candidates are ready"
-              : "Complete your profile to find matches near you"}
+            : matches.length === 1
+              ? "Your top match is ready"
+              : matches.length > 1
+                ? `Your top ${matches.length} matches are ready`
+                : "Complete your profile to find matches near you"}
         </Text>
       </View>
 
@@ -378,22 +380,12 @@ export default function Dashboard() {
           <Text style={styles.requestsText}>My Requests</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.editProfileBtn}
-          onPress={() => router.push("/editProfile")}
-        >
-          <Text style={styles.editProfileText}>Edit Profile</Text>
-        </TouchableOpacity>
-
+        {/* Edit and Log Out live in the header card at the top. */}
         <TouchableOpacity
           style={styles.newProfileBtn}
           onPress={() => router.push("/language")}
         >
           <Text style={styles.newProfileText}>Start New Profile</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-          <Text style={styles.logoutText}>Log Out</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -573,15 +565,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   requestsText: { color: "#fff", fontSize: 16, fontWeight: "700" },
-  editProfileBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    backgroundColor: "#EEF4FF",
-    borderWidth: 2,
-    borderColor: "#2F80ED",
-    alignItems: "center",
-  },
-  editProfileText: { color: "#2F80ED", fontSize: 16, fontWeight: "600" },
   newProfileBtn: {
     borderRadius: 12,
     paddingVertical: 14,
@@ -590,13 +573,4 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   newProfileText: { color: "#2F80ED", fontSize: 16, fontWeight: "500" },
-  logoutBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-    backgroundColor: "#FFF0F0",
-    borderWidth: 1,
-    borderColor: "#FFAAAA",
-  },
-  logoutText: { color: "#E74C3C", fontSize: 16, fontWeight: "500" },
 });
