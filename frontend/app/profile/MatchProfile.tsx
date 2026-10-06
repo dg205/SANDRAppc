@@ -8,6 +8,7 @@ import {
   SafeAreaView,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
+import Avatar from "../../components/Avatar";
 
 export default function MatchProfile() {
   const { match: matchParam, matches, userName } = useLocalSearchParams<{
@@ -26,6 +27,7 @@ export default function MatchProfile() {
   const score = match.score ?? 0;
   const userType = match.userType ?? candidate.userType ?? "";
   const faith = candidate.faith ?? "";
+  const photoUrl = match.photoUrl ?? candidate.photoUrl;
 
   const sharedInterests: string[] = features.shared_interests ?? [];
   const sharedValues: string[] = features.shared_values ?? [];
@@ -63,6 +65,9 @@ export default function MatchProfile() {
         {/* Profile card */}
         <View style={styles.profileCard}>
           <View style={styles.profileHeader}>
+            <View style={styles.profilePhoto}>
+              <Avatar name={name} photoUrl={photoUrl} size={64} />
+            </View>
             <View style={{ flex: 1, marginRight: 12 }}>
               <Text style={styles.profileName}>{name}</Text>
               {!!age && <Text style={styles.profileDetail}>Age: {age}</Text>}
@@ -173,6 +178,7 @@ export default function MatchProfile() {
 }
 
 const styles = StyleSheet.create({
+  profilePhoto: { marginRight: 14 },
   container: { flex: 1, backgroundColor: "#EAF3FF" },
   scroll: { padding: 20, paddingBottom: 48 },
 

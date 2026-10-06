@@ -59,9 +59,15 @@ export async function getTopMatches(
 ): Promise<{ matches: any[]; total_candidates: number }> {
   console.log("Posting matches to:", `${BASE_URL}/api/match`);
 
+  // Matching works signed out too; signed in, the backend also leaves out
+  // anyone on either side of a block.
+  const token = await ensureFreshToken();
   const res = await fetch(`${BASE_URL}/api/match`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ targetUser, candidates }),
   });
 
@@ -98,6 +104,7 @@ export function normalizeMatches(raw: Record<string, any>[]): Match[] {
     location: m.location ?? m.candidate?.location ?? "",
     score: m.score ?? 0,
     userType: m.userType ?? m.candidate?.userType ?? "",
+    photoUrl: m.photoUrl ?? m.candidate?.photoUrl,
   }));
 }
 
@@ -144,6 +151,8 @@ export type ConnectionRequest = {
   message: string;
   status: "pending" | "accepted" | "rejected" | string;
   created_at: string;
+  from_user_photo?: string | null;
+  to_user_photo?: string | null;
 };
 
 export async function sendConnectRequest(request: {
@@ -253,4 +262,91 @@ export async function respondToConnectRequest(
   if (!res.ok) {
     throw new Error(`Respond failed (${res.status}): ${await res.text()}`);
   }
+}
+
+// ── Safety ────────────────────────────────────────────────────────────────────
+
+// Shared by the small JSON calls below: throw the server's message on failure.
+async function sendJson(path: string, method: string, body?: unknown) {
+  const res = await authFetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(serverErrorMessage(text));
+  }
+  return text ? JSON.parse(text) : {};
+}
+
+// Ends the connection for both people; either of them can send a new request later.
+export async function removeConnection(connectionId: number): Promise<void> {
+  await sendJson(`/api/connect/${connectionId}/remove`, "POST");
+}
+
+// Also ends any connection or request between the two of you.
+export async function blockUser(userName: string): Promise<void> {
+  await sendJson(`/api/blocks`, "POST", { user_name: userName });
+}
+
+export async function unblockUser(userName: string): Promise<void> {
+  await sendJson(`/api/blocks/${encodeURIComponent(userName)}`, "DELETE");
+}
+
+export async function getBlockedUsers(): Promise<string[]> {
+  const data = await sendJson(`/api/blocks`, "GET");
+  return (data.blocks ?? []).map((b: { user_name: string }) => b.user_name);
+}
+
+export const REPORT_REASONS = [
+  { value: "harassment", label: "Harassment or bullying" },
+  { value: "inappropriate", label: "Inappropriate messages" },
+  { value: "scam", label: "Asking for money or a scam" },
+  { value: "fake_profile", label: "Fake profile" },
+  { value: "safety", label: "I feel unsafe" },
+  { value: "other", label: "Something else" },
+] as const;
+
+// Reporting also blocks the person.
+export async function reportUser(report: {
+  user_name: string;
+  reason: string;
+  details?: string;
+  connection_id?: number;
+}): Promise<void> {
+  await sendJson(`/api/reports`, "POST", report);
+}
+
+// ── Account ───────────────────────────────────────────────────────────────────
+
+// `asset` is a result from expo-image-picker. Returns the new photo's URL.
+export async function uploadProfilePhoto(asset: {
+  uri: string;
+  mimeType?: string | null;
+  fileName?: string | null;
+  file?: Blob;
+}): Promise<string> {
+  const type = asset.mimeType ?? "image/jpeg";
+  const form = new FormData();
+  if (Platform.OS === "web") {
+    form.append("photo", asset.file ?? (await (await fetch(asset.uri)).blob()), asset.fileName ?? "photo");
+  } else {
+    form.append("photo", { uri: asset.uri, name: asset.fileName ?? "photo.jpg", type } as any);
+  }
+  const res = await authFetch(`/api/users/me/photo`, { method: "POST", body: form });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(serverErrorMessage(text));
+  }
+  return JSON.parse(text).photoUrl;
+}
+
+export async function deleteProfilePhoto(): Promise<void> {
+  await sendJson(`/api/users/me/photo`, "DELETE");
+}
+
+// Permanently deletes the account and everything tied to it, including the login.
+export async function deleteAccount(): Promise<void> {
+  await sendJson(`/api/users/me`, "DELETE");
 }

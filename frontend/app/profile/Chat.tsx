@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
 import { ChatMessage, getMessages, sendMessage } from "../../utils/api";
+import SafetySheet from "../../components/SafetySheet";
 
 const POLL_MS = 5000;
 const MAX_LENGTH = 2000;
@@ -43,6 +44,7 @@ export default function Chat() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const newestId = useRef(0);
   const scrollRef = useRef<ScrollView>(null);
@@ -110,8 +112,25 @@ export default function Chat() {
         <Text style={styles.headerName} numberOfLines={1}>
           {otherUserName}
         </Text>
-        <View style={styles.headerSpacer} />
+        <TouchableOpacity
+          style={styles.menuBtn}
+          onPress={() => setMenuOpen(true)}
+          accessibilityLabel="Remove, block or report"
+        >
+          <Text style={styles.menuText}>•••</Text>
+        </TouchableOpacity>
       </View>
+
+      <SafetySheet
+        visible={menuOpen}
+        otherName={otherUserName ?? ""}
+        connectionId={connId}
+        onClose={() => setMenuOpen(false)}
+        onFinished={() => {
+          setMenuOpen(false);
+          router.back();
+        }}
+      />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -204,7 +223,8 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#1A1A2E",
   },
-  headerSpacer: { width: 70 },
+  menuBtn: { width: 70, alignItems: "flex-end", paddingVertical: 4 },
+  menuText: { fontSize: 20, color: "#2F80ED", fontWeight: "800", letterSpacing: 1 },
 
   messages: { padding: 16, paddingBottom: 8, flexGrow: 1 },
   emptyText: {

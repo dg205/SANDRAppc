@@ -3,7 +3,7 @@
  * Greets the user by name and shows their connections and top matches.
  * Provides Logout and Edit Profile actions.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -26,15 +26,7 @@ import {
   respondToConnectRequest,
 } from "../utils/api";
 import { useAuth } from "../utils/AuthContext";
-
-type PendingRequest = {
-  id: number;
-  from_user_name: string;
-  proposed_day: string;
-  proposed_time: string;
-  message: string;
-  status: string;
-};
+import Avatar from "../components/Avatar";
 
 export default function Dashboard() {
   const { matches: matchesParam, userName: paramName } =
@@ -44,7 +36,7 @@ export default function Dashboard() {
   const [displayName, setDisplayName] = useState<string>(
     paramName && paramName.trim() ? paramName.trim() : ""
   );
-  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<ConnectionRequest[]>([]);
   const [connections, setConnections] = useState<ConnectionRequest[]>([]);
 
   const [matches, setMatches] = useState<Match[]>(() => {
@@ -58,10 +50,13 @@ export default function Dashboard() {
   const [matchesError, setMatchesError] = useState("");
 
   // Matches are only passed in right after the survey. On login or app
-  // reopen, rebuild them from the user's saved profile.
-  const loadMatches = useCallback(async () => {
-    setLoadingMatches(true);
-    setMatchesError("");
+  // reopen, rebuild them from the user's saved profile. A quiet reload keeps
+  // the current list on screen and ignores errors.
+  const loadMatches = useCallback(async (quiet = false) => {
+    if (!quiet) {
+      setLoadingMatches(true);
+      setMatchesError("");
+    }
     try {
       const profile = await getMyProfile();
       if (!profile) {
@@ -72,17 +67,27 @@ export default function Dashboard() {
       const result = await getTopMatches(profile, []);
       setMatches(normalizeMatches(result.matches));
     } catch {
-      setMatchesError("We couldn't load your matches right now.");
+      if (!quiet) setMatchesError("We couldn't load your matches right now.");
     } finally {
-      setLoadingMatches(false);
+      if (!quiet) setLoadingMatches(false);
     }
   }, []);
 
-  useEffect(() => {
-    if (matches.length === 0) loadMatches();
-    // Only on first mount; loadMatches is stable and matches changes on load.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // First visit: load matches unless the survey just handed them over. Coming
+  // back later: refresh quietly, so someone you just blocked drops out.
+  const visited = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (visited.current) {
+        loadMatches(true);
+      } else if (matches.length === 0) {
+        loadMatches();
+      }
+      visited.current = true;
+      // matches is only read on the first visit.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loadMatches])
+  );
 
   // Load name from persistent storage if not passed via params
   useEffect(() => {
@@ -201,7 +206,10 @@ export default function Dashboard() {
           <Text style={styles.sectionTitle}>Pending Requests</Text>
           {pendingRequests.map((req) => (
             <View key={req.id} style={styles.requestCard}>
-              <Text style={styles.requestFrom}>{req.from_user_name}</Text>
+              <View style={styles.requestIdentity}>
+                <Avatar name={req.from_user_name} photoUrl={req.from_user_photo} size={40} />
+                <Text style={styles.requestFrom}>{req.from_user_name}</Text>
+              </View>
               <Text style={styles.requestDetail}>
                 {req.proposed_day} · {req.proposed_time}
               </Text>
@@ -233,7 +241,8 @@ export default function Dashboard() {
         <>
           <Text style={styles.sectionTitle}>Your Connections</Text>
           {connections.map((c) => {
-            const other = c.from_user_name === me ? c.to_user_name : c.from_user_name;
+            const iSent = c.from_user_name === me;
+            const other = iSent ? c.to_user_name : c.from_user_name;
             return (
               <TouchableOpacity
                 key={c.id}
@@ -242,9 +251,10 @@ export default function Dashboard() {
                 onPress={() => openChat(c)}
               >
                 <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>
-                    {other.charAt(0).toUpperCase()}
-                  </Text>
+                  <Avatar
+                    name={other}
+                    photoUrl={iSent ? c.to_user_photo : c.from_user_photo}
+                  />
                 </View>
                 <View style={styles.connectionInfo}>
                   <Text style={styles.connectionName}>{other}</Text>
@@ -272,7 +282,7 @@ export default function Dashboard() {
       ) : matchesError ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyText}>{matchesError}</Text>
-          <TouchableOpacity style={styles.createBtn} onPress={loadMatches}>
+          <TouchableOpacity style={styles.createBtn} onPress={() => loadMatches()}>
             <Text style={styles.createBtnText}>Try Again</Text>
           </TouchableOpacity>
         </View>
@@ -313,7 +323,10 @@ export default function Dashboard() {
               }
             >
               <View style={styles.matchHeader}>
-                <Text style={styles.matchName}>{m.name}</Text>
+                <View style={styles.matchIdentity}>
+                  <Avatar name={m.name} photoUrl={m.photoUrl} size={48} />
+                  <Text style={styles.matchName}>{m.name}</Text>
+                </View>
                 <View
                   style={[
                     styles.scoreBadge,
@@ -450,16 +463,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#E3F6EA",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
-  },
-  avatarText: { fontSize: 20, fontWeight: "700", color: "#27AE60" },
+  avatar: { marginRight: 14 },
   connectionInfo: { flex: 1 },
   connectionName: { fontSize: 18, fontWeight: "700", color: "#1A1A2E" },
   connectionDetail: { fontSize: 14, color: "#555", marginTop: 2 },
@@ -490,7 +494,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 10,
   },
-  matchName: { fontSize: 22, fontWeight: "700", color: "#1A1A2E" },
+  matchIdentity: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
+  matchName: { fontSize: 22, fontWeight: "700", color: "#1A1A2E", flexShrink: 1 },
   scoreBadge: { borderRadius: 20, paddingVertical: 4, paddingHorizontal: 12 },
   scoreText: { color: "#fff", fontWeight: "700", fontSize: 15 },
   matchDetail: { fontSize: 15, color: "#444", marginBottom: 4 },
@@ -535,7 +540,8 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
-  requestFrom: { fontSize: 18, fontWeight: "700", color: "#1A1A2E", marginBottom: 4 },
+  requestIdentity: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 },
+  requestFrom: { fontSize: 18, fontWeight: "700", color: "#1A1A2E" },
   requestDetail: { fontSize: 14, color: "#555", marginBottom: 4 },
   requestMessage: { fontSize: 14, color: "#777", fontStyle: "italic", marginBottom: 10 },
   requestActions: { flexDirection: "row", gap: 10 },

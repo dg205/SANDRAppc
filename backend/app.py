@@ -86,14 +86,82 @@ def db_cursor():
 # ---------------------------------------------------------------------------
 # Supabase Storage upload
 # ---------------------------------------------------------------------------
-def upload_to_supabase_storage(file_path, file_name):
+PHOTO_BUCKET = "profile-photos"
+AUDIO_BUCKET = "survey-audio"
+
+def _storage_config():
+    """(supabase_url, service_key), or None if storage isn't configured."""
     supabase_url = os.environ.get("SUPABASE_URL", "")
     service_key = os.environ.get("SUPABASE_SERVICE_KEY", "")
-
     if not supabase_url or not service_key:
-        print("[storage] SUPABASE_URL or SUPABASE_SERVICE_KEY not set, skipping upload")
+        print("[storage] SUPABASE_URL or SUPABASE_SERVICE_KEY not set")
         return None
+    return supabase_url, service_key
 
+def upload_bytes_to_storage(bucket, object_path, data, content_type):
+    """Upload to a public bucket and return the object's public URL, or None."""
+    config = _storage_config()
+    if not config:
+        return None
+    supabase_url, service_key = config
+
+    response = req.post(
+        f"{supabase_url}/storage/v1/object/{bucket}/{object_path}",
+        headers={"Authorization": f"Bearer {service_key}", "Content-Type": content_type},
+        data=data,
+    )
+    if response.status_code in (200, 201):
+        public_url = f"{supabase_url}/storage/v1/object/public/{bucket}/{object_path}"
+        print(f"[storage] uploaded to Supabase: {public_url}")
+        return public_url
+    print(f"[storage] upload failed: {response.status_code} {response.text}")
+    return None
+
+def storage_path_from_url(bucket, public_url):
+    """Turn a public object URL back into its path inside the bucket."""
+    marker = f"/storage/v1/object/public/{bucket}/"
+    if not public_url or marker not in public_url:
+        return None
+    return public_url.split(marker, 1)[1]
+
+def delete_from_storage(bucket, object_paths):
+    """Best-effort delete; a leftover file shouldn't fail the caller."""
+    object_paths = [p for p in object_paths if p]
+    config = _storage_config()
+    if not config or not object_paths:
+        return
+    supabase_url, service_key = config
+    try:
+        response = req.delete(
+            f"{supabase_url}/storage/v1/object/{bucket}",
+            headers={"Authorization": f"Bearer {service_key}"},
+            json={"prefixes": object_paths},
+        )
+        if response.status_code not in (200, 204):
+            print(f"[storage] delete failed: {response.status_code} {response.text}")
+    except Exception as e:
+        print(f"[storage] delete failed: {e}")
+
+def ensure_public_bucket(bucket):
+    """Create a public storage bucket if it doesn't exist yet."""
+    config = _storage_config()
+    if not config:
+        return
+    supabase_url, service_key = config
+    try:
+        headers = {"Authorization": f"Bearer {service_key}"}
+        if req.get(f"{supabase_url}/storage/v1/bucket/{bucket}", headers=headers).status_code == 200:
+            return
+        response = req.post(
+            f"{supabase_url}/storage/v1/bucket",
+            headers=headers,
+            json={"id": bucket, "name": bucket, "public": True},
+        )
+        print(f"[storage] create bucket {bucket}: {response.status_code}")
+    except Exception as e:
+        print(f"[storage] bucket check failed: {e}")
+
+def upload_to_supabase_storage(file_path, file_name):
     ext = os.path.splitext(file_name)[1].lower()
     content_type_map = {
         ".m4a": "audio/mp4",
@@ -104,22 +172,8 @@ def upload_to_supabase_storage(file_path, file_name):
     }
     content_type = content_type_map.get(ext, "audio/octet-stream")
 
-    url = f"{supabase_url}/storage/v1/object/survey-audio/{file_name}"
-    headers = {
-        "Authorization": f"Bearer {service_key}",
-        "Content-Type": content_type,
-    }
-
     with open(file_path, "rb") as f:
-        response = req.post(url, headers=headers, data=f)
-
-    if response.status_code in (200, 201):
-        public_url = f"{supabase_url}/storage/v1/object/public/survey-audio/{file_name}"
-        print(f"[storage] uploaded to Supabase: {public_url}")
-        return public_url
-    else:
-        print(f"[storage] upload failed: {response.status_code} {response.text}")
-        return None
+        return upload_bytes_to_storage(AUDIO_BUCKET, file_name, f, content_type)
 
 
 # ---------------------------------------------------------------------------
@@ -161,11 +215,52 @@ def require_auth(f):
         return f(user_id, email, *args, **kwargs)
     return wrapper
 
+def optional_auth_user_id():
+    """The caller's user id if they sent a valid token, else None. For routes
+    that stay open but behave better for a signed-in caller."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    try:
+        return verify_supabase_jwt(auth_header[7:]).get("sub")
+    except Exception:
+        return None
+
 def get_candidate_name(c, user_id):
     """Look up the display name backing an authenticated user's candidate row."""
     c.execute("SELECT name FROM candidates WHERE auth_user_id = %s", (user_id,))
     row = c.fetchone()
     return row[0] if row else None
+
+def get_photo_urls(c, names):
+    """{name: photoUrl} for the given names. Names aren't unique, so a real
+    account wins over a seed profile with the same name."""
+    if not names:
+        return {}
+    c.execute(
+        """
+        SELECT name, profile FROM candidates WHERE name = ANY(%s)
+        ORDER BY (auth_user_id IS NULL), id
+        """,
+        (list(names),),
+    )
+    photos = {}
+    for name, profile_json in c.fetchall():
+        if name not in photos:
+            photos[name] = json.loads(profile_json).get("photoUrl")
+    return photos
+
+def get_blocked_names(c, user_name):
+    """Everyone this user blocked, plus everyone who blocked them."""
+    c.execute(
+        """
+        SELECT blocked_name FROM blocks WHERE blocker_name = %s
+        UNION
+        SELECT blocker_name FROM blocks WHERE blocked_name = %s
+        """,
+        (user_name, user_name),
+    )
+    return {row[0] for row in c.fetchall()}
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +448,30 @@ def init_db():
                 UNIQUE (auth_user_id, expo_push_token)
             )
         """)
+        # Blocks and reports are keyed by display name, like connection_requests.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS blocks (
+                id SERIAL PRIMARY KEY,
+                blocker_name TEXT NOT NULL,
+                blocked_name TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE (blocker_name, blocked_name)
+            )
+        """)
+        c.execute("ALTER TABLE blocks ENABLE ROW LEVEL SECURITY")
+        # Reviewed by hand in the Supabase dashboard; there's no admin screen.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS reports (
+                id SERIAL PRIMARY KEY,
+                reporter_name TEXT NOT NULL,
+                reported_name TEXT NOT NULL,
+                connection_id INTEGER,
+                reason TEXT NOT NULL,
+                details TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        c.execute("ALTER TABLE reports ENABLE ROW LEVEL SECURITY")
         c.execute("SELECT COUNT(*) FROM candidates")
         if c.fetchone()[0] == 0:
             for candidate in SEED_CANDIDATES:
@@ -362,6 +481,8 @@ def init_db():
                 )
             print(f"Seeded {len(SEED_CANDIDATES)} profiles ({len(SENIOR_PROFILES)} seniors, {len(COMPANION_PROFILES)} companions)")
         conn.commit()
+
+    ensure_public_bucket(PHOTO_BUCKET)
 
     try:
         from retrain import retrain_model
@@ -973,9 +1094,20 @@ def calculate_matches():
         else:
             candidates = data.get("candidates") or get_all_candidates()
 
+        # A signed-in caller never sees people on either side of a block.
+        blocked = set()
+        caller_id = optional_auth_user_id()
+        if caller_id:
+            with db_cursor() as (conn, c):
+                caller_name = get_candidate_name(c, caller_id)
+                if caller_name:
+                    blocked = get_blocked_names(c, caller_name)
+
         matches = []
         for candidate in candidates:
             if candidate.get("name") == target_user.get("name"):
+                continue
+            if candidate.get("name") in blocked:
                 continue
 
             if user_type == "senior":
@@ -1045,8 +1177,16 @@ def add_user(user_id, email):
         name = user_data.get("name", "Unknown")
         # email always comes from the verified token, never the client body
         user_data["email"] = email
+        # photoUrl is only ever set by the photo upload route
+        user_data.pop("photoUrl", None)
 
         with db_cursor() as (conn, c):
+            # Retaking the survey replaces the profile; keep their photo.
+            c.execute("SELECT profile FROM candidates WHERE auth_user_id = %s", (user_id,))
+            existing = c.fetchone()
+            if existing and json.loads(existing[0]).get("photoUrl"):
+                user_data["photoUrl"] = json.loads(existing[0])["photoUrl"]
+
             c.execute("""
                 INSERT INTO candidates (name, profile, auth_user_id, email)
                 VALUES (%s, %s, %s, %s)
@@ -1085,6 +1225,7 @@ def update_my_user(user_id, email):
     try:
         updates = request.json or {}
         updates.pop("email", None)  # email is only ever set from the verified token
+        updates.pop("photoUrl", None)  # and photoUrl only by the photo upload route
 
         with db_cursor() as (conn, c):
             c.execute("SELECT id, profile FROM candidates WHERE auth_user_id = %s", (user_id,))
@@ -1104,6 +1245,140 @@ def update_my_user(user_id, email):
             conn.commit()
 
         return jsonify({"status": "updated", "id": candidate_id}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+PHOTO_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+def _set_my_photo(c, user_id, photo_url):
+    """Store a new photoUrl (or None) on the caller's profile and return the
+    old one, or raise LookupError if they have no profile yet."""
+    c.execute("SELECT id, profile FROM candidates WHERE auth_user_id = %s", (user_id,))
+    row = c.fetchone()
+    if not row:
+        raise LookupError
+    candidate_id, profile_json = row
+    profile = json.loads(profile_json)
+    old_url = profile.get("photoUrl")
+    if photo_url:
+        profile["photoUrl"] = photo_url
+    else:
+        profile.pop("photoUrl", None)
+    c.execute("UPDATE candidates SET profile = %s WHERE id = %s", (json.dumps(profile), candidate_id))
+    return old_url
+
+@app.route("/api/users/me/photo", methods=["POST"])
+@require_auth
+def upload_my_photo(user_id, email):
+    try:
+        photo = request.files.get("photo")
+        if photo is None:
+            return jsonify({"error": "photo is required"}), 400
+        ext = PHOTO_TYPES.get((photo.mimetype or "").lower())
+        if not ext:
+            return jsonify({"error": "Photo must be a JPEG, PNG or WebP image"}), 400
+        data = photo.read(MAX_PHOTO_BYTES + 1)
+        if len(data) > MAX_PHOTO_BYTES:
+            return jsonify({"error": "Photo is too large (max 5 MB)"}), 400
+
+        with db_cursor() as (conn, c):
+            if not get_candidate_name(c, user_id):
+                return jsonify({"error": "Complete your profile first"}), 404
+
+            # A fresh name per upload, so phones don't keep showing a cached old photo.
+            object_path = f"{user_id}/{int(time.time() * 1000)}.{ext}"
+            photo_url = upload_bytes_to_storage(PHOTO_BUCKET, object_path, data, photo.mimetype)
+            if not photo_url:
+                return jsonify({"error": "Could not store the photo, please try again"}), 502
+
+            old_url = _set_my_photo(c, user_id, photo_url)
+            conn.commit()
+
+        delete_from_storage(PHOTO_BUCKET, [storage_path_from_url(PHOTO_BUCKET, old_url)])
+        return jsonify({"status": "updated", "photoUrl": photo_url}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/users/me/photo", methods=["DELETE"])
+@require_auth
+def delete_my_photo(user_id, email):
+    try:
+        with db_cursor() as (conn, c):
+            try:
+                old_url = _set_my_photo(c, user_id, None)
+            except LookupError:
+                return jsonify({"error": "Complete your profile first"}), 404
+            conn.commit()
+
+        delete_from_storage(PHOTO_BUCKET, [storage_path_from_url(PHOTO_BUCKET, old_url)])
+        return jsonify({"status": "removed"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def _delete_auth_user(user_id):
+    """Delete the Supabase Auth login itself. Returns True on success."""
+    config = _storage_config()
+    if not config:
+        return False
+    supabase_url, service_key = config
+    response = req.delete(
+        f"{supabase_url}/auth/v1/admin/users/{user_id}",
+        headers={"Authorization": f"Bearer {service_key}", "apikey": service_key},
+    )
+    if response.status_code not in (200, 204, 404):
+        print(f"[auth] delete user failed: {response.status_code} {response.text}")
+        return False
+    return True
+
+@app.route("/api/users/me", methods=["DELETE"])
+@require_auth
+def delete_my_account(user_id, email):
+    """Delete everything tied to this account, then the login itself. Reports
+    other people filed about this user are kept as a safety record."""
+    try:
+        with db_cursor() as (conn, c):
+            c.execute("SELECT name, profile FROM candidates WHERE auth_user_id = %s", (user_id,))
+            row = c.fetchone()
+            name = row[0] if row else None
+            photo_url = json.loads(row[1]).get("photoUrl") if row else None
+
+            c.execute(
+                "SELECT audio_file_path FROM survey_responses WHERE lower(user_email) = lower(%s)",
+                (email,),
+            )
+            audio_paths = [storage_path_from_url(AUDIO_BUCKET, r[0]) for r in c.fetchall()]
+
+            if name:
+                c.execute(
+                    """
+                    DELETE FROM messages WHERE connection_id IN (
+                        SELECT id FROM connection_requests
+                        WHERE from_user_name = %s OR to_user_name = %s
+                    )
+                    """,
+                    (name, name),
+                )
+                c.execute(
+                    "DELETE FROM connection_requests WHERE from_user_name = %s OR to_user_name = %s",
+                    (name, name),
+                )
+                c.execute("DELETE FROM blocks WHERE blocker_name = %s OR blocked_name = %s", (name, name))
+                c.execute("DELETE FROM reports WHERE reporter_name = %s", (name,))
+            c.execute("DELETE FROM survey_responses WHERE lower(user_email) = lower(%s)", (email,))
+            c.execute("DELETE FROM push_tokens WHERE auth_user_id = %s", (user_id,))
+            c.execute("DELETE FROM candidates WHERE auth_user_id = %s", (user_id,))
+
+            # Delete the login before committing: if that fails, roll back so
+            # the user can retry instead of ending up with a login and no data.
+            if not _delete_auth_user(user_id):
+                conn.rollback()
+                return jsonify({"error": "Could not delete your account, please try again"}), 502
+            conn.commit()
+
+        delete_from_storage(PHOTO_BUCKET, [storage_path_from_url(PHOTO_BUCKET, photo_url)])
+        delete_from_storage(AUDIO_BUCKET, audio_paths)
+        return jsonify({"status": "deleted"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1203,6 +1478,9 @@ def send_connect_request(user_id, email):
             from_user = get_candidate_name(c, user_id)
             if not from_user:
                 return jsonify({"error": "Complete your profile first"}), 404
+            # Same message either way, so nobody learns they've been blocked.
+            if to_user in get_blocked_names(c, from_user):
+                return jsonify({"error": "You can't send a request to this person"}), 403
 
             c.execute(
                 "INSERT INTO connection_requests (from_user_name, to_user_name, proposed_day, proposed_time, message) VALUES (%s, %s, %s, %s, %s) RETURNING id",
@@ -1239,12 +1517,14 @@ def get_connect_requests(user_id, email, user_name):
             if caller_name != user_name:
                 return jsonify({"error": "Forbidden"}), 403
 
+            # Removed connections (unfriended or blocked) drop out of every list.
             c.execute(
                 "SELECT id, from_user_name, to_user_name, proposed_day, proposed_time, message, status, created_at FROM connection_requests WHERE "
-                + where + " ORDER BY created_at DESC",
+                + where + " AND status <> 'removed' ORDER BY created_at DESC",
                 params
             )
             rows = c.fetchall()
+            photos = get_photo_urls(c, {n for row in rows for n in (row[1], row[2])})
 
         requests_list = [
             {
@@ -1256,6 +1536,8 @@ def get_connect_requests(user_id, email, user_name):
                 "message": row[5],
                 "status": row[6],
                 "created_at": str(row[7]),
+                "from_user_photo": photos.get(row[1]),
+                "to_user_photo": photos.get(row[2]),
             }
             for row in rows
         ]
@@ -1341,6 +1623,8 @@ def send_message(user_id, email):
             from_user, to_user, status = parties
             if sender_name not in (from_user, to_user):
                 return jsonify({"error": "Not a participant in this connection"}), 403
+            if status == "removed":
+                return jsonify({"error": "This connection has ended"}), 400
             if status != "accepted":
                 return jsonify({"error": "Messaging opens once the request is accepted"}), 400
 
@@ -1386,6 +1670,164 @@ def get_messages(user_id, email, connection_id):
                 for r in rows
             ],
         }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Safety Routes - remove a connection, block, and report
+# ---------------------------------------------------------------------------
+
+REPORT_REASONS = {
+    "harassment", "inappropriate", "scam", "fake_profile", "safety", "other",
+}
+MAX_REPORT_DETAILS = 1000
+
+def _end_connections_between(c, name_a, name_b):
+    """Mark every open request or connection between two people removed."""
+    c.execute(
+        """
+        UPDATE connection_requests SET status = 'removed'
+        WHERE status IN ('pending', 'accepted')
+          AND ((from_user_name = %s AND to_user_name = %s)
+            OR (from_user_name = %s AND to_user_name = %s))
+        """,
+        (name_a, name_b, name_b, name_a),
+    )
+
+def _block(c, blocker, blocked):
+    c.execute(
+        "INSERT INTO blocks (blocker_name, blocked_name) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+        (blocker, blocked),
+    )
+    _end_connections_between(c, blocker, blocked)
+
+
+@app.route("/api/connect/<int:connection_id>/remove", methods=["POST"])
+@require_auth
+def remove_connection(user_id, email, connection_id):
+    try:
+        with db_cursor() as (conn, c):
+            caller_name = get_candidate_name(c, user_id)
+            if not caller_name:
+                return jsonify({"error": "Complete your profile first"}), 404
+
+            parties = _get_connection_parties(c, connection_id)
+            if parties is None:
+                return jsonify({"error": "Connection not found"}), 404
+            if caller_name not in (parties[0], parties[1]):
+                return jsonify({"error": "Not a participant in this connection"}), 403
+
+            c.execute(
+                "UPDATE connection_requests SET status = 'removed' WHERE id = %s",
+                (connection_id,),
+            )
+            conn.commit()
+
+        return jsonify({"status": "removed"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/blocks", methods=["GET"])
+@require_auth
+def list_my_blocks(user_id, email):
+    try:
+        with db_cursor() as (conn, c):
+            caller_name = get_candidate_name(c, user_id)
+            if not caller_name:
+                return jsonify({"error": "Complete your profile first"}), 404
+            c.execute(
+                "SELECT blocked_name, created_at FROM blocks WHERE blocker_name = %s ORDER BY created_at DESC",
+                (caller_name,),
+            )
+            rows = c.fetchall()
+
+        return jsonify({
+            "blocks": [{"user_name": r[0], "created_at": str(r[1])} for r in rows],
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/blocks", methods=["POST"])
+@require_auth
+def block_user(user_id, email):
+    try:
+        blocked_name = str((request.json or {}).get("user_name", "")).strip()
+        if not blocked_name:
+            return jsonify({"error": "user_name is required"}), 400
+
+        with db_cursor() as (conn, c):
+            caller_name = get_candidate_name(c, user_id)
+            if not caller_name:
+                return jsonify({"error": "Complete your profile first"}), 404
+            if blocked_name == caller_name:
+                return jsonify({"error": "You can't block yourself"}), 400
+            _block(c, caller_name, blocked_name)
+            conn.commit()
+
+        return jsonify({"status": "blocked"}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/blocks/<user_name>", methods=["DELETE"])
+@require_auth
+def unblock_user(user_id, email, user_name):
+    try:
+        with db_cursor() as (conn, c):
+            caller_name = get_candidate_name(c, user_id)
+            if not caller_name:
+                return jsonify({"error": "Complete your profile first"}), 404
+            # Ended connections stay ended; they can send a new request.
+            c.execute(
+                "DELETE FROM blocks WHERE blocker_name = %s AND blocked_name = %s",
+                (caller_name, user_name),
+            )
+            conn.commit()
+
+        return jsonify({"status": "unblocked"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/reports", methods=["POST"])
+@require_auth
+def report_user(user_id, email):
+    """Record a report and block the person, so they can't keep contacting
+    the reporter while it's reviewed."""
+    try:
+        data = request.json or {}
+        reported_name = str(data.get("user_name", "")).strip()
+        reason = str(data.get("reason", "")).strip()
+        details = str(data.get("details", "")).strip()[:MAX_REPORT_DETAILS]
+        connection_id = data.get("connection_id")
+
+        if not reported_name:
+            return jsonify({"error": "user_name is required"}), 400
+        if reason not in REPORT_REASONS:
+            return jsonify({"error": "Pick a reason for the report"}), 400
+        try:
+            connection_id = int(connection_id) if connection_id is not None else None
+        except (TypeError, ValueError):
+            connection_id = None
+
+        with db_cursor() as (conn, c):
+            caller_name = get_candidate_name(c, user_id)
+            if not caller_name:
+                return jsonify({"error": "Complete your profile first"}), 404
+            if reported_name == caller_name:
+                return jsonify({"error": "You can't report yourself"}), 400
+
+            c.execute(
+                "INSERT INTO reports (reporter_name, reported_name, connection_id, reason, details) VALUES (%s, %s, %s, %s, %s)",
+                (caller_name, reported_name, connection_id, reason, details),
+            )
+            _block(c, caller_name, reported_name)
+            conn.commit()
+
+        return jsonify({"status": "reported"}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
