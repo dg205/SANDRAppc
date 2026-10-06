@@ -13,10 +13,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Platform,
 } from "react-native";
 import { router } from "expo-router";
-import * as ImagePicker from "expo-image-picker";
 import { getItem, removeItem, saveItem, SESSION_KEY } from "../utils/storage";
 import {
   authFetch,
@@ -28,6 +26,7 @@ import {
   uploadProfilePhoto,
 } from "../utils/api";
 import { useAuth } from "../utils/AuthContext";
+import { confirmAction } from "../utils/confirm";
 import Avatar from "../components/Avatar";
 
 // ── Selectable options ────────────────────────────────────────────────────────
@@ -50,19 +49,6 @@ const HELP_OPTIONS_COMPANION = [
 const TALK_OPTIONS = [
   "in-person", "phone", "video call", "text messages",
 ];
-
-// Alert does nothing on web, so fall back to the browser's confirm there.
-async function confirmAction(title: string, message: string, confirmLabel: string) {
-  if (Platform.OS === "web") {
-    return (window as any).confirm(`${title}\n\n${message}`) as boolean;
-  }
-  return new Promise<boolean>((resolve) => {
-    Alert.alert(title, message, [
-      { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-      { text: confirmLabel, style: "destructive", onPress: () => resolve(true) },
-    ]);
-  });
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function EditProfile() {
@@ -119,6 +105,16 @@ export default function EditProfile() {
 
   const pickPhoto = async () => {
     setPhotoError("");
+    // Loaded on tap, not at the top of the file: an app build from before
+    // the photo picker was added has no native picker, and importing it
+    // up front would crash this whole screen instead of just this button.
+    let ImagePicker: typeof import("expo-image-picker");
+    try {
+      ImagePicker = await import("expo-image-picker");
+    } catch {
+      setPhotoError("Adding a photo needs the latest version of the app.");
+      return;
+    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: true,
@@ -179,14 +175,6 @@ export default function EditProfile() {
   };
 
   // Toggle a value in a string array
-  const toggle = (
-    arr: string[],
-    setArr: React.Dispatch<React.SetStateAction<string[]>>,
-    val: string
-  ) => {
-    setArr(arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val]);
-  };
-
   const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert("Name required", "Please enter your name.");
@@ -311,70 +299,34 @@ export default function EditProfile() {
       {/* Interests */}
       <View style={styles.section}>
         <Text style={styles.label}>Interests & Hobbies</Text>
-        <View style={styles.chips}>
-          {INTEREST_OPTIONS.map((opt) => (
-            <TouchableOpacity
-              key={opt}
-              style={[styles.chip, interests.includes(opt) && styles.chipActive]}
-              onPress={() => toggle(interests, setInterests, opt)}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  interests.includes(opt) && styles.chipTextActive,
-                ]}
-              >
-                {opt}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <ChipPicker
+          options={INTEREST_OPTIONS}
+          selected={interests}
+          onChange={setInterests}
+          placeholder="e.g. birdwatching"
+        />
       </View>
 
       {/* Help with / can help */}
       <View style={styles.section}>
         <Text style={styles.label}>{helpLabel}</Text>
-        <View style={styles.chips}>
-          {helpOptions.map((opt) => (
-            <TouchableOpacity
-              key={opt}
-              style={[styles.chip, helpWith.includes(opt) && styles.chipActive]}
-              onPress={() => toggle(helpWith, setHelpWith, opt)}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  helpWith.includes(opt) && styles.chipTextActive,
-                ]}
-              >
-                {opt}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <ChipPicker
+          options={helpOptions}
+          selected={helpWith}
+          onChange={setHelpWith}
+          placeholder="e.g. reading mail"
+        />
       </View>
 
       {/* Talk preferences */}
       <View style={styles.section}>
         <Text style={styles.label}>How I like to connect</Text>
-        <View style={styles.chips}>
-          {TALK_OPTIONS.map((opt) => (
-            <TouchableOpacity
-              key={opt}
-              style={[styles.chip, talkPrefs.includes(opt) && styles.chipActive]}
-              onPress={() => toggle(talkPrefs, setTalkPrefs, opt)}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  talkPrefs.includes(opt) && styles.chipTextActive,
-                ]}
-              >
-                {opt}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <ChipPicker
+          options={TALK_OPTIONS}
+          selected={talkPrefs}
+          onChange={setTalkPrefs}
+          placeholder="e.g. letters"
+        />
       </View>
 
       {/* Save button */}
@@ -429,6 +381,99 @@ export default function EditProfile() {
   );
 }
 
+const MAX_OTHER_LENGTH = 40;
+
+// Tap-to-toggle chips plus an "Other" chip for typing your own answer.
+// Saved answers that aren't in `options` (typed in earlier, or from the
+// survey) show as extra selected chips, so they can be seen and removed.
+function ChipPicker({
+  options,
+  selected,
+  onChange,
+  placeholder,
+}: {
+  options: string[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+  placeholder: string;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  const extras = selected.filter((s) => !options.includes(s));
+  const toggle = (val: string) =>
+    onChange(selected.includes(val) ? selected.filter((x) => x !== val) : [...selected, val]);
+
+  const addOther = () => {
+    // Stored lowercase like the preset options, so matching treats them alike.
+    const val = draft.trim().toLowerCase();
+    if (val && !selected.includes(val)) onChange([...selected, val]);
+    setDraft("");
+    setAdding(false);
+  };
+
+  return (
+    <>
+      <View style={styles.chips}>
+        {[...options, ...extras].map((opt) => {
+          const on = selected.includes(opt);
+          return (
+            <TouchableOpacity
+              key={opt}
+              style={[styles.chip, on && styles.chipActive]}
+              onPress={() => toggle(opt)}
+            >
+              <Text style={[styles.chipText, on && styles.chipTextActive]}>
+                {opt}
+                {on && extras.includes(opt) ? "  ✕" : ""}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+        {!adding && (
+          <TouchableOpacity
+            style={[styles.chip, styles.otherChip]}
+            onPress={() => setAdding(true)}
+          >
+            <Text style={styles.chipText}>+ Other</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {adding && (
+        <View style={styles.otherRow}>
+          <TextInput
+            style={[styles.input, styles.otherInput]}
+            value={draft}
+            onChangeText={setDraft}
+            placeholder={placeholder}
+            placeholderTextColor="#AAA"
+            maxLength={MAX_OTHER_LENGTH}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={addOther}
+          />
+          <TouchableOpacity
+            style={[styles.otherAddBtn, !draft.trim() && styles.saveBtnDisabled]}
+            onPress={addOther}
+            disabled={!draft.trim()}
+          >
+            <Text style={styles.otherAddText}>Add</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              setDraft("");
+              setAdding(false);
+            }}
+          >
+            <Text style={styles.otherCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: "#EAF3FF" },
   scroll: { padding: 20, paddingBottom: 48 },
@@ -477,6 +522,17 @@ const styles = StyleSheet.create({
   },
   chipText: { fontSize: 14, color: "#2F80ED" },
   chipTextActive: { color: "#fff", fontWeight: "600" },
+  otherChip: { borderStyle: "dashed" },
+  otherRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 10 },
+  otherInput: { flex: 1, paddingVertical: 10 },
+  otherAddBtn: {
+    backgroundColor: "#2F80ED",
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+  },
+  otherAddText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  otherCancelText: { color: "#888", fontSize: 15, fontWeight: "600" },
 
   saveBtn: {
     marginTop: 8,

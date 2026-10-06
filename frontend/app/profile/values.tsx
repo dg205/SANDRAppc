@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import { router } from "expo-router";
+import LeaveSurveyButton from "../../components/LeaveSurveyButton";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { useProfile } from "./profileContext";
 
@@ -119,6 +120,7 @@ export default function Values() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+        <LeaveSurveyButton />
         <Text style={styles.appName}>Sandrapp</Text>
 
         <View style={styles.header}>

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Image, BackHandler, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
+import LeaveSurveyButton, { markHasProfile } from "../../components/LeaveSurveyButton";
 import { useProfile } from "./profileContext";
 import { authFetch, addUser, getTopMatches } from "../../utils/api";
 import { saveItem, SESSION_KEY } from "../../utils/storage";
@@ -110,6 +111,7 @@ export default function FinishSurvey() {
       if (!userRegistered.current) {
         await addUser(targetUser);
         userRegistered.current = true;
+        markHasProfile();
       }
 
       const result = await getTopMatches(targetUser, []);
@@ -147,6 +149,7 @@ export default function FinishSurvey() {
 
   return (
     <View style={styles.container}>
+      {!submitted && <LeaveSurveyButton />}
       <Image source={require("../../assets/logo.png")} style={styles.logo} />
 
       <Text style={styles.title}>Congratulations!</Text>

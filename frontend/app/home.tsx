@@ -27,6 +27,7 @@ import {
 } from "../utils/api";
 import { useAuth } from "../utils/AuthContext";
 import Avatar from "../components/Avatar";
+import { markHasProfile } from "../components/LeaveSurveyButton";
 
 export default function Dashboard() {
   const { matches: matchesParam, userName: paramName } =
@@ -63,6 +64,7 @@ export default function Dashboard() {
         setMatches([]);
         return;
       }
+      markHasProfile();
       if (profile.name) setDisplayName((prev) => prev || profile.name);
       const result = await getTopMatches(profile, []);
       setMatches(normalizeMatches(result.matches));

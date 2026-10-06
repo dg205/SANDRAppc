@@ -14,6 +14,7 @@ import {
 import * as FileSystem from "expo-file-system/legacy";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
+import LeaveSurveyButton from "../../components/LeaveSurveyButton";
 import { useProfile } from "./profileContext";
 
 export default function BioAudio() {
@@ -126,6 +127,7 @@ export default function BioAudio() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+        <LeaveSurveyButton />
         <Text style={styles.appName}>Sandrapp</Text>
 
         <View style={styles.header}>

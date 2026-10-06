@@ -1,9 +1,11 @@
 import { View, Text, TouchableOpacity, StyleSheet, Image } from "react-native";
 import { router } from "expo-router";
+import LeaveSurveyButton from "../components/LeaveSurveyButton";
 
 export default function Language() {
   return (
     <View style={styles.container}>
+      <LeaveSurveyButton style={{ marginLeft: 20 }} />
       <Image source={require("../assets/logo.png")} style={styles.logo} />
 
       <Text style={styles.title}>Welcome to the Sandrapp Survey</Text>

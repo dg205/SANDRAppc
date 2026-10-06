@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ScrollView } from "react-native";
 import { router } from "expo-router";
+import LeaveSurveyButton from "../../components/LeaveSurveyButton";
 import { useProfile, type UserType } from "./profileContext";
 
 // Matching only pairs a senior with a companion, so this must be recorded.
@@ -31,6 +32,7 @@ export default function Age() {
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps="handled"
     >
+      <LeaveSurveyButton style={{ marginLeft: 20 }} />
       <Image source={require("../../assets/logo.png")} style={styles.logo} />
 
       <Text style={styles.header}>Let's Set Up Your Profile</Text>

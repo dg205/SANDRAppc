@@ -26,10 +26,6 @@ export default function Welcome() {
           <Text style={styles.buttonText}>Sign Up</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.backButton} onPress={() => router.push("/language")}>
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-
         {TEST_MODE_ENABLED && (
           <TouchableOpacity
             style={styles.devButton}
@@ -116,20 +112,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: "#1A1A1A",
     fontSize: 14,
-  },
-
-  backButton: {
-    width: "90%",
-    paddingVertical: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#8AB4FF",
-    alignItems: "center",
-  },
-
-  backButtonText: {
-    fontSize: 18,
-    color: "#1A1A1A",
   },
 
   devButton: {
