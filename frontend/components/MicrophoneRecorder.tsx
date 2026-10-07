@@ -274,14 +274,27 @@ export default function MicrophoneRecorder({
     try {
       const formData = new FormData();
 
-      formData.append(
-        "audio",
-        {
-          uri,
-          name: "recording.m4a",
-          type: "audio/m4a",
-        } as any
-      );
+      if (Platform.OS === "web") {
+        // In a browser the recording is a blob: URL, and FormData needs the
+        // actual audio. Browsers usually record WebM; the server reads the
+        // format from the file extension, so name it to match.
+        const blob = await (await fetch(uri)).blob();
+        const ext = blob.type.includes("ogg")
+          ? "ogg"
+          : blob.type.includes("mp4") || blob.type.includes("m4a")
+            ? "m4a"
+            : "webm";
+        formData.append("audio", blob, `recording.${ext}`);
+      } else {
+        formData.append(
+          "audio",
+          {
+            uri,
+            name: "recording.m4a",
+            type: "audio/m4a",
+          } as any
+        );
+      }
 
       const response = await fetch(`${BASE_URL}/api/transcribe`, {
         method: "POST",
