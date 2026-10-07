@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Image } from "react-native";
 import { router } from "expo-router";
 import LeaveSurveyButton from "../components/LeaveSurveyButton";
 
-export default function Language() {
+export default function SurveyStart() {
   return (
     <View style={styles.container}>
       <LeaveSurveyButton style={{ marginLeft: 20 }} />

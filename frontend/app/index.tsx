@@ -13,7 +13,7 @@ export default function Index() {
   // Optimistic default: only a confirmed 404 flips this to false. A network
   // error or unexpected status sends a signed-in user to /home instead of
   // forcing them to redo onboarding - home.tsx already has an empty state
-  // for "no profile yet" that routes to /language just as well.
+  // for "no profile yet" that routes to /survey just as well.
   const [hasProfile, setHasProfile] = useState(true);
 
   useEffect(() => {
@@ -66,6 +66,6 @@ export default function Index() {
   }
 
   if (!session) return <Redirect href="/welcome" />;
-  if (!hasProfile) return <Redirect href="/language" />;
+  if (!hasProfile) return <Redirect href="/survey" />;
   return <Redirect href="/home" />;
 }

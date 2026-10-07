@@ -309,7 +309,7 @@ export default function Dashboard() {
           </Text>
           <TouchableOpacity
             style={styles.createBtn}
-            onPress={() => router.push("/language")}
+            onPress={() => router.push("/survey")}
           >
             <Text style={styles.createBtnText}>Create Profile</Text>
           </TouchableOpacity>
@@ -405,9 +405,9 @@ export default function Dashboard() {
         {/* Edit and Log Out live in the header card at the top. */}
         <TouchableOpacity
           style={styles.newProfileBtn}
-          onPress={() => router.push("/language")}
+          onPress={() => router.push("/survey")}
         >
-          <Text style={styles.newProfileText}>Start New Profile</Text>
+          <Text style={styles.newProfileText}>Retake Survey</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

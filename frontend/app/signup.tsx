@@ -44,7 +44,7 @@ export default function Signup() {
     try {
       await signUp(email.trim(), password);
       updateProfile({ email: email.trim() });
-      router.replace("/language");
+      router.replace("/survey");
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));
     } finally {

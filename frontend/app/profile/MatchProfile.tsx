@@ -99,6 +99,38 @@ export default function MatchProfile() {
     </View>
   );
 
+  // What they told us about themselves. Spoken survey answers only exist for
+  // people who took the voice survey; the sample profiles just have tags.
+  const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const list = (v: unknown) =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x.trim()) : [];
+  const aboutParts = [
+    { title: `About ${name}`, quote: text(candidate.bio), tags: [] as string[] },
+    {
+      title: "Would enjoy",
+      quote: text(candidate.hobbiesText),
+      tags: list(candidate.connectionGoals),
+    },
+    {
+      title: "Usually free",
+      quote: text(candidate.availabilityText),
+      tags: list(candidate.availableDays),
+    },
+    {
+      title: "Likes to talk by",
+      quote: text(candidate.commPreferenceText),
+      tags: list(candidate.talkPreferences),
+    },
+    {
+      title: userType === "senior" ? "Could use help with" : "Happy to help with",
+      quote: "",
+      tags: list(candidate.helpWith),
+    },
+    { title: "Interests", quote: "", tags: list(candidate.interests) },
+    { title: "Languages", quote: "", tags: list(candidate.languages) },
+    { title: "Good to know", quote: text(candidate.gettingHelpText), tags: [] as string[] },
+  ].filter((p) => p.quote || p.tags.length > 0);
+
   const hasCommon =
     sharedInterests.length > 0 ||
     sharedValues.length > 0 ||
@@ -155,6 +187,28 @@ export default function MatchProfile() {
             />
           </View>
         </View>
+
+        {/* About them */}
+        {aboutParts.length > 0 && (
+          <View style={styles.section}>
+            {aboutParts.map((part, i) => (
+              <View
+                key={part.title}
+                style={[styles.subsection, i === aboutParts.length - 1 && styles.lastSubsection]}
+              >
+                <Text style={styles.subsectionTitle}>{part.title}</Text>
+                {!!part.quote && <Text style={styles.quote}>“{part.quote}”</Text>}
+                {part.tags.length > 0 && (
+                  <View style={styles.tagRow}>
+                    {part.tags.map((t) => (
+                      <Tag key={t} label={t} />
+                    ))}
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* Things in common */}
         <View style={styles.section}>
@@ -343,6 +397,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   subsection: { marginBottom: 16 },
+  lastSubsection: { marginBottom: 0 },
+  quote: {
+    fontSize: 16,
+    color: "#1A1A2E",
+    lineHeight: 24,
+    fontStyle: "italic",
+    marginBottom: 8,
+  },
   subsectionTitle: {
     fontSize: 14,
     fontWeight: "600",

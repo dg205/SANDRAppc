@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Image, BackHandler, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import LeaveSurveyButton, { markHasProfile } from "../../components/LeaveSurveyButton";
 import { useProfile } from "./profileContext";
@@ -140,12 +140,9 @@ export default function FinishSurvey() {
     }
   };
 
-  const handleExit = () => {
-    BackHandler.exitApp();
-    if (typeof window !== "undefined") {
-      window.close();
-    }
-  };
+  // The dashboard loads matches on its own, so this works even if fetching
+  // them here failed.
+  const goToDashboard = () => router.replace("/home");
 
   return (
     <View style={styles.container}>
@@ -190,16 +187,18 @@ export default function FinishSurvey() {
               <>
                 <Text style={styles.errorText}>{matchesError}</Text>
                 <TouchableOpacity style={styles.button} onPress={fetchAndShowMatches}>
-                  <Text style={styles.buttonText}>View My Matches</Text>
+                  <Text style={styles.buttonText}>Try Again</Text>
                 </TouchableOpacity>
               </>
             )}
-            <TouchableOpacity
-              style={[styles.button, matchesError !== "" && styles.buttonSecondary]}
-              onPress={handleExit}
-            >
-              <Text style={styles.buttonText}>Exit</Text>
-            </TouchableOpacity>
+            {!fetchingMatches && (
+              <TouchableOpacity
+                style={[styles.button, matchesError !== "" && styles.buttonSecondary]}
+                onPress={goToDashboard}
+              >
+                <Text style={styles.buttonText}>Go to Dashboard</Text>
+              </TouchableOpacity>
+            )}
           </>
         )}
       </View>
