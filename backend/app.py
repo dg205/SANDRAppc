@@ -950,13 +950,15 @@ def _age_gap_appropriate(senior, companion):
 def derive_ml_features(senior, companion):
     c1 = _str(senior, "location")
     c2 = _str(companion, "location")
-    same_city = int(c1 == c2 or frozenset({c1, c2}) in NEARBY_CITIES)
+    # Two unknown cities aren't the same city.
+    same_city = int(bool(c1 and c2) and (c1 == c2 or frozenset({c1, c2}) in NEARBY_CITIES))
 
     f1 = _str(senior, "faith")
     f2 = _str(companion, "faith")
-    same_religion = int(f1 == f2)
+    # Likewise two people who didn't mention a faith don't share one.
+    same_religion = int(bool(f1) and f1 == f2)
     broad_faith = int(
-        (f1 in CHRISTIAN_TRADITIONS and f2 in CHRISTIAN_TRADITIONS) or f1 == f2
+        (f1 in CHRISTIAN_TRADITIONS and f2 in CHRISTIAN_TRADITIONS) or same_religion
     )
 
     age_diff = abs(senior.get("age", 70) - companion.get("age", 30))
@@ -1054,53 +1056,106 @@ def compute_ml_score(senior, companion):
     prob = ML_MODEL.predict_proba(scaled)[0][1]
     return round(prob * 100, 1)
 
-def compute_rule_score(senior, companion):
-    f = derive_ml_features(senior, companion)
-    score = 0.0
+# Interests that are close without being the same word, so "jazz" and
+# "music" or "running" and "walking" earn partial credit.
+INTEREST_GROUPS = {
+    "music": {"music", "jazz", "gospel music", "opera", "polka music", "guitar", "singing", "piano"},
+    "active": {"walking", "hiking", "running", "exercise", "sports", "golf", "soccer",
+               "yoga", "dancing", "bocce", "fishing", "swimming"},
+    "making": {"art", "painting", "crafts", "knitting", "quilting", "sewing", "writing",
+               "baking", "cooking", "gardening"},
+    "games": {"chess", "gaming", "card games", "cards", "board games", "crossword", "puzzles"},
+    "learning": {"reading", "history", "theater", "movies", "technology", "book club", "travel"},
+    "faith": {"church", "gospel music", "meditation"},
+    "giving": {"volunteering", "community"},
+}
 
-    if f["same_city"]:
-        score += 15
+def _interest_groups(interest):
+    return {g for g, members in INTEREST_GROUPS.items() if interest in members}
+
+def _overlap_ratio(a, b):
+    """Shared share of the shorter list (0..1), or None if either is empty."""
+    if not a or not b:
+        return None
+    return len(a & b) / min(len(a), len(b))
+
+def interest_similarity(i1, i2):
+    """0..1: each interest of the person with fewer counts 1 for an exact
+    match on the other side, 0.5 for a related one (same group)."""
+    if not i1 or not i2:
+        return None
+    small, large = (i1, i2) if len(i1) <= len(i2) else (i2, i1)
+    large_groups = set().union(*(_interest_groups(x) for x in large))
+    total = 0.0
+    for interest in small:
+        if interest in large:
+            total += 1
+        elif _interest_groups(interest) & large_groups:
+            total += 0.5
+    return total / len(small)
+
+# How many of the 100 points each part is worth. Missing information scores
+# a neutral share instead of counting as a match or a mismatch.
+SCORE_WEIGHTS = {
+    "location": 15, "interests": 20, "help": 15, "availability": 10,
+    "age": 10, "talk": 8, "goals": 7, "values": 5, "background": 10,
+}
+UNKNOWN_SHARE = 0.4
+
+def score_parts(senior, companion):
+    """The rule-based score split into named parts, each 0..its weight."""
+    f = derive_ml_features(senior, companion)
+    w = SCORE_WEIGHTS
+
+    def share(value, weight):
+        return weight * (UNKNOWN_SHARE if value is None else value)
+
+    c1, c2 = _str(senior, "location"), _str(companion, "location")
+    location = None if not (c1 and c2) else float(f["same_city"])
+
+    # What the older adult needs, against what the companion can do.
+    help_ratio = None
+    needs, offers = _set(senior, "helpWith"), _set(companion, "helpWith")
+    if needs and offers:
+        help_ratio = len(needs & offers) / len(needs)
 
     age_gap = f["age_diff"]
-    if 15 <= age_gap <= 55:
-        score += max(0.0, 15.0 - abs(age_gap - 38) * 0.35)
+    age = max(0.0, 1 - abs(age_gap - 38) / 40) if 15 <= age_gap <= 55 else 0.0
 
-    score += min(f["interest_overlap"] * 8, 16)
+    goals = (0.6 * f["life_stage_needs_alignment"] + 0.4 * f["companionship_gap_overlap"])
 
-    if f["volunteering_help_match"]:
-        score += 13
-
-    if f["life_stage_needs_alignment"]:
-        score += 10
-
-    if f["comm_style_compatibility"]:
-        score += 6
-
-    if f["companionship_gap_overlap"]:
-        score += 5
-
+    background = 0.0
     if f["same_religion"]:
-        score += 6
+        background += 0.5
     elif f["holiday_overlap"]:
-        score += 3
+        background += 0.3
+    background += 0.2 * f["cultural_background_match"]
+    languages = {l for l in _set(senior, "languages") & _set(companion, "languages") if l != "english"}
+    background += 0.3 * bool(languages)
 
-    if f["cultural_background_match"]:
-        score += 4
+    return {
+        "location": share(location, w["location"]),
+        "interests": share(interest_similarity(_set(senior, "interests"), _set(companion, "interests")), w["interests"]),
+        "help": share(help_ratio, w["help"]),
+        "availability": share(_overlap_ratio(_set(senior, "availableDays"), _set(companion, "availableDays")), w["availability"]),
+        "age": w["age"] * age,
+        "talk": share(_overlap_ratio(_set(senior, "talkPreferences"), _set(companion, "talkPreferences")), w["talk"]),
+        "goals": w["goals"] * goals,
+        "values": share(_overlap_ratio(_set(senior, "values"), _set(companion, "values")), w["values"]),
+        "background": w["background"] * min(background, 1.0),
+    }
 
-    if f["tech_compatibility"]:
-        score += 3
-
-    if f["shared_memory_trigger_overlap"]:
-        score += 3
-
-    return round(min(max(score, 40.0), 92.0), 1)
+def compute_rule_score(senior, companion):
+    """0-100 from the parts above. No floor or ceiling, so profiles that
+    differ get different scores instead of piling up at a cap."""
+    return round(sum(score_parts(senior, companion).values()), 1)
 
 def compute_match_score(senior, companion):
     rule = compute_rule_score(senior, companion)
     if ML_MODEL and ML_SCALER:
         ml = compute_ml_score(senior, companion)
         blended = rule * 0.70 + ml * 0.30
-        return round(min(blended, 96.0), 1)
+        return round(min(blended, 99.0), 1)
     return rule
 
 def build_feature_breakdown(senior, companion):
