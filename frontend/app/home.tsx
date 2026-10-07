@@ -20,6 +20,7 @@ import {
   ConnectionRequest,
   Match,
   getConnectRequests,
+  relationWith,
   getMyProfile,
   getTopMatches,
   normalizeMatches,
@@ -28,6 +29,13 @@ import {
 import { useAuth } from "../utils/AuthContext";
 import Avatar from "../components/Avatar";
 import { markHasProfile } from "../components/LeaveSurveyButton";
+
+// Shown on a match card when you already have something going with them.
+const RELATION_BADGES: Record<string, { label: string; color: string } | undefined> = {
+  connected: { label: "✓ Connected", color: "#27AE60" },
+  sent: { label: "Request sent", color: "#F39C12" },
+  received: { label: "Wants to connect with you", color: "#2F80ED" },
+};
 
 export default function Dashboard() {
   const { matches: matchesParam, userName: paramName } =
@@ -39,6 +47,7 @@ export default function Dashboard() {
   );
   const [pendingRequests, setPendingRequests] = useState<ConnectionRequest[]>([]);
   const [connections, setConnections] = useState<ConnectionRequest[]>([]);
+  const [allRequests, setAllRequests] = useState<ConnectionRequest[]>([]);
 
   const [matches, setMatches] = useState<Match[]>(() => {
     try {
@@ -113,6 +122,7 @@ export default function Dashboard() {
     if (!me) return;
     try {
       const requests = await getConnectRequests(me, "all");
+      setAllRequests(requests);
       setConnections(requests.filter((r) => r.status === "accepted"));
       setPendingRequests(
         requests.filter((r) => r.to_user_name === me && r.status === "pending")
@@ -309,7 +319,10 @@ export default function Dashboard() {
           {/* ── Match cards ── */}
           <Text style={styles.sectionTitle}>Your Top Matches</Text>
 
-          {matches.map((m, i) => (
+          {matches.map((m, i) => {
+            const relation = relationWith(allRequests, me, m.name);
+            const badge = RELATION_BADGES[relation.status];
+            return (
             <TouchableOpacity
               key={i}
               activeOpacity={0.85}
@@ -341,6 +354,12 @@ export default function Dashboard() {
                 </View>
               </View>
 
+              {badge && (
+                <View style={[styles.relationBadge, { backgroundColor: badge.color }]}>
+                  <Text style={styles.relationText}>{badge.label}</Text>
+                </View>
+              )}
+
               <Text style={styles.matchDetail}>Age: {m.age}</Text>
               <Text style={styles.matchDetail}>
                 {m.location ? cap(m.location) : ""}
@@ -364,7 +383,8 @@ export default function Dashboard() {
                 />
               </View>
             </TouchableOpacity>
-          ))}
+            );
+          })}
         </>
       )}
 
@@ -494,6 +514,14 @@ const styles = StyleSheet.create({
   scoreText: { color: "#fff", fontWeight: "700", fontSize: 15 },
   matchDetail: { fontSize: 15, color: "#444", marginBottom: 4 },
   matchType: { fontSize: 13, color: "#2F80ED", marginBottom: 10, fontWeight: "600" },
+  relationBadge: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginBottom: 10,
+  },
+  relationText: { color: "#fff", fontSize: 13, fontWeight: "700" },
   scoreBar: {
     height: 8,
     backgroundColor: "#DDE3ED",

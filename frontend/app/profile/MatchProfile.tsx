@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -6,9 +6,16 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
+  ActivityIndicator,
 } from "react-native";
-import { useLocalSearchParams, router } from "expo-router";
+import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
 import Avatar from "../../components/Avatar";
+import {
+  Relation,
+  getConnectRequests,
+  relationWith,
+  respondToConnectRequest,
+} from "../../utils/api";
 
 export default function MatchProfile() {
   const { match: matchParam, matches, userName } = useLocalSearchParams<{
@@ -32,6 +39,51 @@ export default function MatchProfile() {
   const sharedInterests: string[] = features.shared_interests ?? [];
   const sharedValues: string[] = features.shared_values ?? [];
   const sharedLanguages: string[] = features.shared_languages ?? [];
+
+  const me = (userName ?? "").trim();
+  const [relation, setRelation] = useState<Relation | null>(null);
+  const [accepting, setAccepting] = useState(false);
+  const [actionError, setActionError] = useState("");
+
+  // Checked on every visit, so coming back after sending a request shows it.
+  // If it can't be checked, fall back to the normal button; the server still
+  // refuses a duplicate request.
+  const loadRelation = useCallback(async () => {
+    if (!me) {
+      setRelation({ status: "none" });
+      return;
+    }
+    try {
+      setRelation(relationWith(await getConnectRequests(me, "all"), me, name));
+    } catch {
+      setRelation({ status: "none" });
+    }
+  }, [me, name]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadRelation();
+    }, [loadRelation])
+  );
+
+  const openChat = (connectionId: number) =>
+    router.push({
+      pathname: "/profile/Chat",
+      params: { connectionId: String(connectionId), otherUserName: name, userName: me },
+    });
+
+  const acceptRequest = async (requestId: number) => {
+    setAccepting(true);
+    setActionError("");
+    try {
+      await respondToConnectRequest(requestId, "accepted");
+      await loadRelation();
+    } catch {
+      setActionError("Couldn't accept the request. Please try again.");
+    } finally {
+      setAccepting(false);
+    }
+  };
 
   const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
 
@@ -157,21 +209,64 @@ export default function MatchProfile() {
           )}
         </View>
 
-        {/* Connect button */}
-        <TouchableOpacity
-          style={styles.connectBtn}
-          onPress={() =>
-            router.push({
-              pathname: "/profile/ConnectRequest",
-              params: {
-                matchName: name,
-                fromUserName: userName ?? "",
-              },
-            })
-          }
-        >
-          <Text style={styles.connectBtnText}>Request to Connect</Text>
-        </TouchableOpacity>
+        {/* What you can do next depends on where you stand with them */}
+        {relation === null ? (
+          <ActivityIndicator color="#2F80ED" style={{ marginTop: 8 }} />
+        ) : relation.status === "connected" ? (
+          <>
+            <Text style={styles.relationNote}>You&apos;re connected with {name}.</Text>
+            <TouchableOpacity
+              style={[styles.connectBtn, styles.connectBtnGreen]}
+              onPress={() => openChat(relation.request.id)}
+            >
+              <Text style={styles.connectBtnText}>Open Chat</Text>
+            </TouchableOpacity>
+          </>
+        ) : relation.status === "sent" ? (
+          <View style={[styles.connectBtn, styles.connectBtnWaiting]}>
+            <Text style={styles.connectBtnText}>Request sent</Text>
+            <Text style={styles.connectBtnSub}>
+              Waiting for {name} to answer
+            </Text>
+          </View>
+        ) : relation.status === "received" ? (
+          <>
+            <Text style={styles.relationNote}>
+              {name} already asked to connect with you
+              {relation.request.proposed_day
+                ? ` (${relation.request.proposed_day} · ${relation.request.proposed_time})`
+                : ""}
+              .
+            </Text>
+            {actionError !== "" && <Text style={styles.actionError}>{actionError}</Text>}
+            <TouchableOpacity
+              style={[styles.connectBtn, styles.connectBtnGreen, accepting && styles.busy]}
+              disabled={accepting}
+              onPress={() => acceptRequest(relation.request.id)}
+            >
+              {accepting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.connectBtnText}>Accept Request</Text>
+              )}
+            </TouchableOpacity>
+          </>
+        ) : (
+          <TouchableOpacity
+            style={styles.connectBtn}
+            onPress={() =>
+              router.push({
+                pathname: "/profile/ConnectRequest",
+                params: {
+                  matchName: name,
+                  fromUserName: me,
+                },
+              })
+            }
+          >
+            <Text style={styles.connectBtnText}>Request to Connect</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -284,4 +379,16 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   connectBtnText: { color: "#fff", fontSize: 18, fontWeight: "700" },
+  connectBtnGreen: { backgroundColor: "#27AE60", shadowColor: "#27AE60" },
+  connectBtnWaiting: { backgroundColor: "#F39C12", shadowColor: "#F39C12" },
+  connectBtnSub: { color: "#fff", fontSize: 14, marginTop: 2 },
+  busy: { opacity: 0.6 },
+  relationNote: {
+    fontSize: 16,
+    color: "#1A1A2E",
+    textAlign: "center",
+    marginBottom: 12,
+    lineHeight: 22,
+  },
+  actionError: { fontSize: 14, color: "#E74C3C", textAlign: "center", marginBottom: 10 },
 });

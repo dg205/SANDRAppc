@@ -1478,9 +1478,33 @@ def send_connect_request(user_id, email):
             from_user = get_candidate_name(c, user_id)
             if not from_user:
                 return jsonify({"error": "Complete your profile first"}), 404
+            if to_user == from_user:
+                return jsonify({"error": "You can't send a request to yourself"}), 400
             # Same message either way, so nobody learns they've been blocked.
             if to_user in get_blocked_names(c, from_user):
                 return jsonify({"error": "You can't send a request to this person"}), 403
+
+            # One open request or connection per pair, in either direction.
+            c.execute(
+                """
+                SELECT from_user_name, status FROM connection_requests
+                WHERE status IN ('pending', 'accepted')
+                  AND ((from_user_name = %s AND to_user_name = %s)
+                    OR (from_user_name = %s AND to_user_name = %s))
+                LIMIT 1
+                """,
+                (from_user, to_user, to_user, from_user),
+            )
+            existing = c.fetchone()
+            if existing:
+                existing_from, existing_status = existing
+                if existing_status == "accepted":
+                    message = f"You're already connected with {to_user}"
+                elif existing_from == from_user:
+                    message = f"You already sent {to_user} a request"
+                else:
+                    message = f"{to_user} already sent you a request. You can accept it on your dashboard"
+                return jsonify({"error": message}), 409
 
             c.execute(
                 "INSERT INTO connection_requests (from_user_name, to_user_name, proposed_day, proposed_time, message) VALUES (%s, %s, %s, %s, %s) RETURNING id",

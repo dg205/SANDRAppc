@@ -173,10 +173,34 @@ export async function sendConnectRequest(request: {
   console.log("Send connect request status =", res.status);
 
   if (!res.ok) {
-    throw new Error(`Send request failed (${res.status}): ${text}`);
+    throw new Error(serverErrorMessage(text));
   }
 
   return JSON.parse(text);
+}
+
+export type Relation =
+  | { status: "connected" | "sent" | "received"; request: ConnectionRequest }
+  | { status: "none" };
+
+// Where `me` stands with `other`, from a list of my requests (direction=all).
+export function relationWith(
+  requests: ConnectionRequest[],
+  me: string,
+  other: string,
+): Relation {
+  const between = requests.filter(
+    (r) =>
+      (r.from_user_name === me && r.to_user_name === other) ||
+      (r.from_user_name === other && r.to_user_name === me),
+  );
+  const accepted = between.find((r) => r.status === "accepted");
+  if (accepted) return { status: "connected", request: accepted };
+  const pending = between.find((r) => r.status === "pending");
+  if (pending) {
+    return { status: pending.from_user_name === me ? "sent" : "received", request: pending };
+  }
+  return { status: "none" };
 }
 
 // received = requests sent to this user, sent = requests they made, all = both.

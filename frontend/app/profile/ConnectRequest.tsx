@@ -80,7 +80,7 @@ export default function ConnectRequest() {
       });
       setSent(true);
     } catch (err) {
-      setError(String(err));
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSending(false);
     }
