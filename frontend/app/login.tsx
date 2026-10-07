@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuth } from "../utils/AuthContext";
+import PasswordInput from "../components/PasswordInput";
 
 export default function Login() {
   const { signIn } = useAuth();
@@ -83,13 +84,10 @@ export default function Login() {
           />
 
           <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
+          <PasswordInput
             placeholder="Your password"
-            placeholderTextColor="#999"
             value={password}
             onChangeText={setPassword}
-            secureTextEntry
           />
 
           {error !== "" && <Text style={styles.errorText}>{error}</Text>}

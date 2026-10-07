@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { useAuth } from "../utils/AuthContext";
+import PasswordInput from "../components/PasswordInput";
 import { useProfile } from "../utils/ProfileContext";
 import { TEST_MODE_ENABLED } from "../utils/testMode";
 
@@ -96,23 +97,17 @@ export default function Signup() {
           />
 
           <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
+          <PasswordInput
             placeholder="At least 6 characters"
-            placeholderTextColor="#999"
             value={password}
             onChangeText={setPassword}
-            secureTextEntry
           />
 
           <Text style={styles.label}>Confirm Password</Text>
-          <TextInput
-            style={styles.input}
+          <PasswordInput
             placeholder="Re-enter your password"
-            placeholderTextColor="#999"
             value={confirmPassword}
             onChangeText={setConfirmPassword}
-            secureTextEntry
           />
 
           {error !== "" && <Text style={styles.errorText}>{error}</Text>}
