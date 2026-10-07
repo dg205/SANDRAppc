@@ -16,6 +16,7 @@ import {
   ConnectionRequest,
   getConnectRequests,
   respondToConnectRequest,
+  otherPerson,
 } from "../../utils/api";
 import { getItem, SESSION_KEY } from "../../utils/storage";
 
@@ -74,12 +75,11 @@ export default function Requests() {
     }
   };
 
-  const received = requests.filter(
-    (r) => r.to_user_name === me && r.status === "pending"
-  );
-  const sent = requests.filter(
-    (r) => r.from_user_name === me && r.status !== "accepted"
-  );
+  // sent_by_me comes from the server (by id); the name check is for an
+  // older server.
+  const iSent = (r: ConnectionRequest) => r.sent_by_me ?? r.from_user_name === me;
+  const received = requests.filter((r) => !iSent(r) && r.status === "pending");
+  const sent = requests.filter((r) => iSent(r) && r.status !== "accepted");
   const connected = requests.filter((r) => r.status === "accepted");
   const isEmpty = !received.length && !sent.length && !connected.length;
 
@@ -153,11 +153,11 @@ export default function Requests() {
               <>
                 <Text style={styles.sectionTitle}>Connected</Text>
                 {connected.map((r) => {
-                  const other = r.from_user_name === me ? r.to_user_name : r.from_user_name;
+                  const other = otherPerson(r, me);
                   return (
                     <View key={r.id} style={styles.card}>
                       <View style={styles.rowBetween}>
-                        <Text style={styles.cardName}>{other}</Text>
+                        <Text style={styles.cardName}>{other.name}</Text>
                         <View style={[styles.badge, styles.badgeGreen]}>
                           <Text style={styles.badgeText}>Connected</Text>
                         </View>
@@ -170,7 +170,8 @@ export default function Requests() {
                             pathname: "/profile/Chat",
                             params: {
                               connectionId: String(r.id),
-                              otherUserName: other,
+                              otherUserName: other.name,
+                              otherUserId: other.id !== undefined ? String(other.id) : "",
                               userName: me,
                             },
                           })

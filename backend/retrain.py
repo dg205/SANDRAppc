@@ -19,22 +19,22 @@ def retrain_model():
     # 2. Pull real outcomes from the database
     with db_cursor() as (conn, c):
         c.execute("""
-            SELECT from_user_name, to_user_name, status
+            SELECT from_user_id, to_user_id, status
             FROM connection_requests
             WHERE status IN ('accepted', 'rejected')
         """)
         requests = c.fetchall()
 
-        c.execute("SELECT name, profile FROM candidates")
+        c.execute("SELECT id, profile FROM candidates")
         rows = c.fetchall()
 
-    profiles = {name: json.loads(profile) for name, profile in rows}
+    profiles = {cid: json.loads(profile) for cid, profile in rows}
 
     # 3. Build feature rows from real accepted/rejected pairs
     real_rows = []
-    for from_name, to_name, status in requests:
-        p1 = profiles.get(from_name)
-        p2 = profiles.get(to_name)
+    for from_id, to_id, status in requests:
+        p1 = profiles.get(from_id)
+        p2 = profiles.get(to_id)
         if not p1 or not p2:
             continue
 

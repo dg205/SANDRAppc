@@ -17,8 +17,9 @@ import { getItem, SESSION_KEY } from "../../utils/storage";
 import { DAYS, TIMES } from "../../utils/schedule";
 
 export default function ConnectRequest() {
-  const { matchName, fromUserName } = useLocalSearchParams<{
+  const { matchName, matchId, fromUserName } = useLocalSearchParams<{
     matchName?: string;
+    matchId?: string;
     fromUserName?: string;
   }>();
 
@@ -48,6 +49,8 @@ export default function ConnectRequest() {
     setError("");
     try {
       await sendConnectRequest({
+        // The id says who; the name is a fallback for an older server.
+        ...(matchId ? { to_user_id: Number(matchId) } : {}),
         to_user_name: matchName ?? "",
         proposed_day: day,
         proposed_time: time,

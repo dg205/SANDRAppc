@@ -24,17 +24,21 @@ type Step = "menu" | "remove" | "block" | "report" | "done";
 export default function SafetySheet({
   visible,
   otherName,
+  otherId,
   connectionId,
   onClose,
   onFinished,
 }: {
   visible: boolean;
   otherName: string;
+  // Who to block or report. Without it, the server goes by name.
+  otherId?: number;
   connectionId: number;
   onClose: () => void;
   // Called after the connection has ended, once the user taps OK.
   onFinished: () => void;
 }) {
+  const person = { id: otherId, name: otherName };
   const [step, setStep] = useState<Step>("menu");
   const [reason, setReason] = useState("");
   const [details, setDetails] = useState("");
@@ -124,7 +128,7 @@ export default function SafetySheet({
                   onPress={() =>
                     step === "remove"
                       ? run(() => removeConnection(connectionId), `${otherName} has been removed from your connections.`)
-                      : run(() => blockUser(otherName), `${otherName} has been blocked.`)
+                      : run(() => blockUser(person), `${otherName} has been blocked.`)
                   }
                 >
                   {busy ? (
@@ -171,8 +175,7 @@ export default function SafetySheet({
                   onPress={() =>
                     run(
                       () =>
-                        reportUser({
-                          user_name: otherName,
+                        reportUser(person, {
                           reason,
                           details: details.trim(),
                           connection_id: connectionId,

@@ -69,7 +69,7 @@ export default function EditProfile() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoError, setPhotoError] = useState("");
-  const [blocked, setBlocked] = useState<string[]>([]);
+  const [blocked, setBlocked] = useState<{ id: number; name: string }[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
@@ -148,10 +148,10 @@ export default function EditProfile() {
     }
   };
 
-  const unblock = async (person: string) => {
+  const unblock = async (personId: number) => {
     try {
-      await unblockUser(person);
-      setBlocked((prev) => prev.filter((b) => b !== person));
+      await unblockUser(personId);
+      setBlocked((prev) => prev.filter((b) => b.id !== personId));
     } catch {}
   };
 
@@ -349,9 +349,9 @@ export default function EditProfile() {
         <View style={styles.card}>
           <Text style={styles.label}>Blocked people</Text>
           {blocked.map((person) => (
-            <View key={person} style={styles.blockedRow}>
-              <Text style={styles.blockedName}>{person}</Text>
-              <TouchableOpacity hitSlop={12} onPress={() => unblock(person)}>
+            <View key={person.id} style={styles.blockedRow}>
+              <Text style={styles.blockedName}>{person.name}</Text>
+              <TouchableOpacity hitSlop={12} onPress={() => unblock(person.id)}>
                 <Text style={styles.unblockText}>Unblock</Text>
               </TouchableOpacity>
             </View>

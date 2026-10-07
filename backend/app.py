@@ -226,39 +226,67 @@ def optional_auth_user_id():
     except Exception:
         return None
 
+# People are identified by their candidates.id everywhere (requests,
+# messages, blocks, reports). Names are only for display: two people can
+# share one, and someone can change theirs.
+
+def get_caller(c, user_id):
+    """(candidate_id, name) for the signed-in user, or (None, None) if they
+    haven't made a profile yet."""
+    c.execute("SELECT id, name FROM candidates WHERE auth_user_id = %s", (user_id,))
+    row = c.fetchone()
+    return (row[0], row[1]) if row else (None, None)
+
 def get_candidate_name(c, user_id):
     """Look up the display name backing an authenticated user's candidate row."""
-    c.execute("SELECT name FROM candidates WHERE auth_user_id = %s", (user_id,))
+    return get_caller(c, user_id)[1]
+
+def get_person(c, candidate_id):
+    """(id, name) for a candidate id, or None."""
+    c.execute("SELECT id, name FROM candidates WHERE id = %s", (candidate_id,))
     row = c.fetchone()
-    return row[0] if row else None
+    return (row[0], row[1]) if row else None
 
-def get_photo_urls(c, names):
-    """{name: photoUrl} for the given names. Names aren't unique, so a real
-    account wins over a seed profile with the same name."""
-    if not names:
-        return {}
+def resolve_person(c, data, id_key="user_id", name_key="user_name"):
+    """The person a request body points at: by id, or by name for older app
+    builds that only send names (a real account wins over a sample profile
+    with the same name). Returns (id, name) or None."""
+    raw_id = data.get(id_key)
+    if raw_id not in (None, ""):
+        try:
+            return get_person(c, int(raw_id))
+        except (TypeError, ValueError):
+            return None
+    name = str(data.get(name_key, "")).strip()
+    if not name:
+        return None
     c.execute(
-        """
-        SELECT name, profile FROM candidates WHERE name = ANY(%s)
-        ORDER BY (auth_user_id IS NULL), id
-        """,
-        (list(names),),
+        "SELECT id, name FROM candidates WHERE name = %s ORDER BY (auth_user_id IS NULL), id LIMIT 1",
+        (name,),
     )
-    photos = {}
-    for name, profile_json in c.fetchall():
-        if name not in photos:
-            photos[name] = json.loads(profile_json).get("photoUrl")
-    return photos
+    row = c.fetchone()
+    return (row[0], row[1]) if row else None
 
-def get_blocked_names(c, user_name):
+def get_people(c, ids):
+    """{id: {"name", "photoUrl"}} for the given candidate ids."""
+    ids = [i for i in set(ids) if i is not None]
+    if not ids:
+        return {}
+    c.execute("SELECT id, name, profile FROM candidates WHERE id = ANY(%s)", (ids,))
+    return {
+        row[0]: {"name": row[1], "photoUrl": json.loads(row[2]).get("photoUrl")}
+        for row in c.fetchall()
+    }
+
+def get_blocked_ids(c, my_id):
     """Everyone this user blocked, plus everyone who blocked them."""
     c.execute(
         """
-        SELECT blocked_name FROM blocks WHERE blocker_name = %s
+        SELECT blocked_id FROM blocks WHERE blocker_id = %s
         UNION
-        SELECT blocker_name FROM blocks WHERE blocked_name = %s
+        SELECT blocker_id FROM blocks WHERE blocked_id = %s
         """,
-        (user_name, user_name),
+        (my_id, my_id),
     )
     return {row[0] for row in c.fetchall()}
 
@@ -487,6 +515,7 @@ def init_db():
                     (candidate["name"], json.dumps(candidate))
                 )
             print(f"Seeded {len(SEED_CANDIDATES)} profiles ({len(SENIOR_PROFILES)} seniors, {len(COMPANION_PROFILES)} companions)")
+        migrate_names_to_ids(c)
         conn.commit()
 
     ensure_public_bucket(PHOTO_BUCKET)
@@ -505,14 +534,50 @@ def init_db():
     except Exception as e:
         print(f"Startup retrain skipped: {e}")
 
+# (table, id column, name column) pairs that point at a person.
+PERSON_COLUMNS = [
+    ("connection_requests", "from_user_id", "from_user_name"),
+    ("connection_requests", "to_user_id", "to_user_name"),
+    ("connection_requests", "meetup_updated_by_id", "meetup_updated_by"),
+    ("messages", "sender_id", "sender_name"),
+    ("blocks", "blocker_id", "blocker_name"),
+    ("blocks", "blocked_id", "blocked_name"),
+    ("reports", "reporter_id", "reporter_name"),
+    ("reports", "reported_id", "reported_name"),
+]
+
+def migrate_names_to_ids(c):
+    """Add a candidate-id column next to every name column and fill it in for
+    rows saved before ids were used. Only touches rows whose id is still
+    empty, so running it on every startup is safe. A name with no profile
+    behind it (old test data) is left empty and so belongs to nobody."""
+    for table, id_col, _ in PERSON_COLUMNS:
+        c.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {id_col} INTEGER")
+    for table, id_col, name_col in PERSON_COLUMNS:
+        # Names were never unique; a real account wins over a sample profile.
+        c.execute(f"""
+            UPDATE {table} t SET {id_col} = person.id
+            FROM (
+                SELECT DISTINCT ON (name) name, id FROM candidates
+                ORDER BY name, (auth_user_id IS NULL), id
+            ) person
+            WHERE t.{id_col} IS NULL AND t.{name_col} = person.name
+        """)
+    # Two different people may share a name, so blocks are unique per id now.
+    c.execute("ALTER TABLE blocks DROP CONSTRAINT IF EXISTS blocks_blocker_name_blocked_name_key")
+    c.execute("CREATE UNIQUE INDEX IF NOT EXISTS blocks_blocker_blocked_id_idx ON blocks (blocker_id, blocked_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS connection_requests_from_id_idx ON connection_requests (from_user_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS connection_requests_to_id_idx ON connection_requests (to_user_id)")
+
 def get_all_candidates():
     with db_cursor() as (conn, c):
-        c.execute("SELECT profile FROM candidates")
+        c.execute("SELECT id, profile FROM candidates")
         rows = c.fetchall()
     candidates = []
     for row in rows:
-        p = json.loads(row[0])
+        p = json.loads(row[1])
         p.pop("email", None)
+        p["id"] = row[0]
         candidates.append(p)
     return candidates
 
@@ -1101,20 +1166,24 @@ def calculate_matches():
         else:
             candidates = data.get("candidates") or get_all_candidates()
 
-        # A signed-in caller never sees people on either side of a block.
-        blocked = set()
-        caller_id = optional_auth_user_id()
-        if caller_id:
+        # A signed-in caller never sees themselves, or anyone on either side
+        # of a block. Signed out, the best we can do is skip their own name.
+        my_id, blocked = None, set()
+        auth_id = optional_auth_user_id()
+        if auth_id:
             with db_cursor() as (conn, c):
-                caller_name = get_candidate_name(c, caller_id)
-                if caller_name:
-                    blocked = get_blocked_names(c, caller_name)
+                my_id, _ = get_caller(c, auth_id)
+                if my_id is not None:
+                    blocked = get_blocked_ids(c, my_id)
 
         matches = []
         for candidate in candidates:
-            if candidate.get("name") == target_user.get("name"):
+            if my_id is not None:
+                if candidate.get("id") == my_id:
+                    continue
+            elif candidate.get("name") == target_user.get("name"):
                 continue
-            if candidate.get("name") in blocked:
+            if candidate.get("id") in blocked:
                 continue
 
             if user_type == "senior":
@@ -1345,9 +1414,9 @@ def delete_my_account(user_id, email):
     other people filed about this user are kept as a safety record."""
     try:
         with db_cursor() as (conn, c):
-            c.execute("SELECT name, profile FROM candidates WHERE auth_user_id = %s", (user_id,))
+            c.execute("SELECT id, profile FROM candidates WHERE auth_user_id = %s", (user_id,))
             row = c.fetchone()
-            name = row[0] if row else None
+            my_id = row[0] if row else None
             photo_url = json.loads(row[1]).get("photoUrl") if row else None
 
             c.execute(
@@ -1356,22 +1425,22 @@ def delete_my_account(user_id, email):
             )
             audio_paths = [storage_path_from_url(AUDIO_BUCKET, r[0]) for r in c.fetchall()]
 
-            if name:
+            if my_id is not None:
                 c.execute(
                     """
                     DELETE FROM messages WHERE connection_id IN (
                         SELECT id FROM connection_requests
-                        WHERE from_user_name = %s OR to_user_name = %s
+                        WHERE from_user_id = %s OR to_user_id = %s
                     )
                     """,
-                    (name, name),
+                    (my_id, my_id),
                 )
                 c.execute(
-                    "DELETE FROM connection_requests WHERE from_user_name = %s OR to_user_name = %s",
-                    (name, name),
+                    "DELETE FROM connection_requests WHERE from_user_id = %s OR to_user_id = %s",
+                    (my_id, my_id),
                 )
-                c.execute("DELETE FROM blocks WHERE blocker_name = %s OR blocked_name = %s", (name, name))
-                c.execute("DELETE FROM reports WHERE reporter_name = %s", (name,))
+                c.execute("DELETE FROM blocks WHERE blocker_id = %s OR blocked_id = %s", (my_id, my_id))
+                c.execute("DELETE FROM reports WHERE reporter_id = %s", (my_id,))
             c.execute("DELETE FROM survey_responses WHERE lower(user_email) = lower(%s)", (email,))
             c.execute("DELETE FROM push_tokens WHERE auth_user_id = %s", (user_id,))
             c.execute("DELETE FROM candidates WHERE auth_user_id = %s", (user_id,))
@@ -1467,55 +1536,76 @@ def transcribe_audio():
 # ---------------------------------------------------------------------------
 # Connection Request Routes
 # ---------------------------------------------------------------------------
+# Who's who is decided by candidate id. Names are still stored next to the
+# ids and returned, so older app builds that compare names keep working.
+
+REQUEST_COLUMNS = (
+    "id, from_user_id, to_user_id, from_user_name, to_user_name, "
+    "proposed_day, proposed_time, message, status, created_at"
+)
+
+def _open_request_between(c, a_id, b_id):
+    """(from_user_id, status) of a pending/accepted request between two
+    people in either direction, or None."""
+    c.execute(
+        """
+        SELECT from_user_id, status FROM connection_requests
+        WHERE status IN ('pending', 'accepted')
+          AND ((from_user_id = %s AND to_user_id = %s)
+            OR (from_user_id = %s AND to_user_id = %s))
+        LIMIT 1
+        """,
+        (a_id, b_id, b_id, a_id),
+    )
+    return c.fetchone()
+
 
 @app.route("/api/connect", methods=["POST"])
 @require_auth
 def send_connect_request(user_id, email):
     try:
         data = request.json or {}
-        to_user   = data.get("to_user_name", "").strip()
-        day       = data.get("proposed_day", "").strip()
-        proposed_time = data.get("proposed_time", "").strip()
-        message   = data.get("message", "").strip()
+        day       = str(data.get("proposed_day", "")).strip()
+        proposed_time = str(data.get("proposed_time", "")).strip()
+        message   = str(data.get("message", "")).strip()
 
-        if not to_user or not day or not proposed_time:
+        if not (data.get("to_user_id") or str(data.get("to_user_name", "")).strip()) \
+                or not day or not proposed_time:
             return jsonify({"error": "Missing required fields"}), 400
 
         with db_cursor() as (conn, c):
-            from_user = get_candidate_name(c, user_id)
-            if not from_user:
+            my_id, my_name = get_caller(c, user_id)
+            if my_id is None:
                 return jsonify({"error": "Complete your profile first"}), 404
-            if to_user == from_user:
+            target = resolve_person(c, data, "to_user_id", "to_user_name")
+            if target is None:
+                return jsonify({"error": "We couldn't find that person"}), 404
+            to_id, to_name = target
+            if to_id == my_id:
                 return jsonify({"error": "You can't send a request to yourself"}), 400
             # Same message either way, so nobody learns they've been blocked.
-            if to_user in get_blocked_names(c, from_user):
+            if to_id in get_blocked_ids(c, my_id):
                 return jsonify({"error": "You can't send a request to this person"}), 403
 
-            # One open request or connection per pair, in either direction.
-            c.execute(
-                """
-                SELECT from_user_name, status FROM connection_requests
-                WHERE status IN ('pending', 'accepted')
-                  AND ((from_user_name = %s AND to_user_name = %s)
-                    OR (from_user_name = %s AND to_user_name = %s))
-                LIMIT 1
-                """,
-                (from_user, to_user, to_user, from_user),
-            )
-            existing = c.fetchone()
+            existing = _open_request_between(c, my_id, to_id)
             if existing:
                 existing_from, existing_status = existing
                 if existing_status == "accepted":
-                    message = f"You're already connected with {to_user}"
-                elif existing_from == from_user:
-                    message = f"You already sent {to_user} a request"
+                    error = f"You're already connected with {to_name}"
+                elif existing_from == my_id:
+                    error = f"You already sent {to_name} a request"
                 else:
-                    message = f"{to_user} already sent you a request. You can accept it on your dashboard"
-                return jsonify({"error": message}), 409
+                    error = f"{to_name} already sent you a request. You can accept it on your dashboard"
+                return jsonify({"error": error}), 409
 
             c.execute(
-                "INSERT INTO connection_requests (from_user_name, to_user_name, proposed_day, proposed_time, message) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-                (from_user, to_user, day, proposed_time, message)
+                """
+                INSERT INTO connection_requests
+                    (from_user_id, to_user_id, from_user_name, to_user_name,
+                     proposed_day, proposed_time, message)
+                VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
+                """,
+                (my_id, to_id, my_name, to_name, day, proposed_time, message)
             )
             new_id = c.fetchone()[0]
             conn.commit()
@@ -1528,52 +1618,67 @@ def send_connect_request(user_id, email):
 @app.route("/api/connect/<user_name>", methods=["GET"])
 @require_auth
 def get_connect_requests(user_id, email, user_name):
+    """The caller's requests. The name in the path is from older app builds
+    and must be the caller's own; the lookup itself goes by id."""
     try:
         # received (default) = requests sent to this user, sent = requests they
         # made, all = both. The WHERE text comes from this fixed dict only.
         direction = request.args.get("direction", "received").strip().lower()
         filters = {
-            "received": ("to_user_name = %s", (user_name,)),
-            "sent": ("from_user_name = %s", (user_name,)),
-            "all": ("(to_user_name = %s OR from_user_name = %s)", (user_name, user_name)),
+            "received": "to_user_id = %(me)s",
+            "sent": "from_user_id = %(me)s",
+            "all": "(to_user_id = %(me)s OR from_user_id = %(me)s)",
         }
         if direction not in filters:
             return jsonify({"error": "direction must be 'received', 'sent' or 'all'"}), 400
-        where, params = filters[direction]
 
         with db_cursor() as (conn, c):
-            caller_name = get_candidate_name(c, user_id)
-            if not caller_name:
+            my_id, my_name = get_caller(c, user_id)
+            if my_id is None:
                 return jsonify({"error": "Complete your profile first"}), 404
-            if caller_name != user_name:
+            if my_name != user_name:
                 return jsonify({"error": "Forbidden"}), 403
 
             # Removed connections (unfriended or blocked) drop out of every list.
             c.execute(
-                "SELECT id, from_user_name, to_user_name, proposed_day, proposed_time, message, status, created_at, "
-                + MEETUP_COLUMNS + " FROM connection_requests WHERE "
-                + where + " AND status <> 'removed' ORDER BY created_at DESC",
-                params
+                "SELECT " + REQUEST_COLUMNS + ", " + MEETUP_COLUMNS
+                + " FROM connection_requests WHERE " + filters[direction]
+                + " AND status <> 'removed' ORDER BY created_at DESC",
+                {"me": my_id},
             )
             rows = c.fetchall()
-            photos = get_photo_urls(c, {n for row in rows for n in (row[1], row[2])})
+            people = get_people(c, [i for row in rows for i in (row[1], row[2])])
 
-        requests_list = [
-            {
-                "id": row[0],
-                "from_user_name": row[1],
-                "to_user_name": row[2],
-                "proposed_day": row[3],
-                "proposed_time": row[4],
-                "message": row[5],
-                "status": row[6],
-                "created_at": str(row[7]),
-                "from_user_photo": photos.get(row[1]),
-                "to_user_photo": photos.get(row[2]),
-                "meetup": _meetup_from_row(row[1:3] + row[3:5], row[8:]),
-            }
-            for row in rows
-        ]
+        requests_list = []
+        for row in rows:
+            (rid, from_id, to_id, from_stored, to_stored,
+             day, time_, message, status, created_at) = row[:10]
+            # Current names, in case someone has renamed themselves since.
+            from_name = people.get(from_id, {}).get("name", from_stored)
+            to_name = people.get(to_id, {}).get("name", to_stored)
+            sent_by_me = from_id == my_id
+            other_id = to_id if sent_by_me else from_id
+            meetup = _meetup_from_row((from_id, from_name, day, time_), row[10:], people)
+            meetup["updated_by_me"] = meetup.pop("updated_by_id") == my_id
+            requests_list.append({
+                "id": rid,
+                "from_user_id": from_id,
+                "to_user_id": to_id,
+                "from_user_name": from_name,
+                "to_user_name": to_name,
+                "proposed_day": day,
+                "proposed_time": time_,
+                "message": message,
+                "status": status,
+                "created_at": str(created_at),
+                "from_user_photo": people.get(from_id, {}).get("photoUrl"),
+                "to_user_photo": people.get(to_id, {}).get("photoUrl"),
+                "sent_by_me": sent_by_me,
+                "other_user_id": other_id,
+                "other_user_name": to_name if sent_by_me else from_name,
+                "other_user_photo": people.get(other_id, {}).get("photoUrl"),
+                "meetup": meetup,
+            })
         return jsonify({"requests": requests_list}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1590,17 +1695,16 @@ def respond_connect_request(user_id, email, request_id):
             return jsonify({"error": "status must be 'accepted' or 'rejected'"}), 400
 
         with db_cursor() as (conn, c):
-            caller_name = get_candidate_name(c, user_id)
-            if not caller_name:
+            my_id, _ = get_caller(c, user_id)
+            if my_id is None:
                 return jsonify({"error": "Complete your profile first"}), 404
 
-            c.execute("SELECT to_user_name FROM connection_requests WHERE id = %s", (request_id,))
+            c.execute("SELECT to_user_id FROM connection_requests WHERE id = %s", (request_id,))
             row = c.fetchone()
             if row is None:
                 return jsonify({"error": "Request not found"}), 404
-            # Only the recipient of the request may accept/reject it - this was
-            # previously unchecked entirely (anyone could flip any request by id).
-            if row[0] != caller_name:
+            # Only the recipient of the request may accept/reject it.
+            if row[0] != my_id:
                 return jsonify({"error": "Forbidden"}), 403
 
             c.execute(
@@ -1621,9 +1725,9 @@ def respond_connect_request(user_id, email, request_id):
 MAX_MESSAGE_LENGTH = 2000
 
 def _get_connection_parties(c, connection_id):
-    """Return (from_user_name, to_user_name, status) for a request, or None."""
+    """Return (from_user_id, to_user_id, status) for a request, or None."""
     c.execute(
-        "SELECT from_user_name, to_user_name, status FROM connection_requests WHERE id = %s",
+        "SELECT from_user_id, to_user_id, status FROM connection_requests WHERE id = %s",
         (connection_id,)
     )
     return c.fetchone()
@@ -1646,15 +1750,15 @@ def send_message(user_id, email):
             return jsonify({"error": f"Message is too long (max {MAX_MESSAGE_LENGTH} characters)"}), 400
 
         with db_cursor() as (conn, c):
-            sender_name = get_candidate_name(c, user_id)
-            if not sender_name:
+            my_id, my_name = get_caller(c, user_id)
+            if my_id is None:
                 return jsonify({"error": "Complete your profile first"}), 404
 
             parties = _get_connection_parties(c, connection_id)
             if parties is None:
                 return jsonify({"error": "Connection not found"}), 404
-            from_user, to_user, status = parties
-            if sender_name not in (from_user, to_user):
+            from_id, to_id, status = parties
+            if my_id not in (from_id, to_id):
                 return jsonify({"error": "Not a participant in this connection"}), 403
             if status == "removed":
                 return jsonify({"error": "This connection has ended"}), 400
@@ -1662,8 +1766,8 @@ def send_message(user_id, email):
                 return jsonify({"error": "Messaging opens once the request is accepted"}), 400
 
             c.execute(
-                "INSERT INTO messages (connection_id, sender_name, body) VALUES (%s, %s, %s) RETURNING id, created_at",
-                (connection_id, sender_name, body)
+                "INSERT INTO messages (connection_id, sender_id, sender_name, body) VALUES (%s, %s, %s, %s) RETURNING id, created_at",
+                (connection_id, my_id, my_name, body)
             )
             message_id, created_at = c.fetchone()
             conn.commit()
@@ -1680,26 +1784,34 @@ def get_messages(user_id, email, connection_id):
         since_id = request.args.get("since_id", default=0, type=int)
 
         with db_cursor() as (conn, c):
-            user_name = get_candidate_name(c, user_id)
-            if not user_name:
+            my_id, _ = get_caller(c, user_id)
+            if my_id is None:
                 return jsonify({"error": "Complete your profile first"}), 404
 
             parties = _get_connection_parties(c, connection_id)
             if parties is None:
                 return jsonify({"error": "Connection not found"}), 404
-            if user_name not in (parties[0], parties[1]):
+            if my_id not in (parties[0], parties[1]):
                 return jsonify({"error": "Not a participant in this connection"}), 403
 
             c.execute(
-                "SELECT id, sender_name, body, created_at FROM messages WHERE connection_id = %s AND id > %s ORDER BY id ASC",
+                "SELECT id, sender_id, sender_name, body, created_at FROM messages WHERE connection_id = %s AND id > %s ORDER BY id ASC",
                 (connection_id, since_id)
             )
             rows = c.fetchall()
+            people = get_people(c, [r[1] for r in rows])
 
         return jsonify({
             "connection_id": connection_id,
             "messages": [
-                {"id": r[0], "sender_name": r[1], "body": r[2], "created_at": str(r[3])}
+                {
+                    "id": r[0],
+                    "sender_id": r[1],
+                    "sender_name": people.get(r[1], {}).get("name", r[2]),
+                    "mine": r[1] == my_id,
+                    "body": r[3],
+                    "created_at": str(r[4]),
+                }
                 for r in rows
             ],
         }), 200
@@ -1712,40 +1824,50 @@ def get_messages(user_id, email, connection_id):
 # ---------------------------------------------------------------------------
 
 MAX_PLACE_LENGTH = 120
-MEETUP_COLUMNS = "meetup_day, meetup_time, meetup_place, meetup_status, meetup_updated_by"
+MEETUP_COLUMNS = "meetup_day, meetup_time, meetup_place, meetup_status, meetup_updated_by_id, meetup_updated_by"
 
-def _meetup_from_row(request_fields, meetup_fields):
-    """Build the meetup plan. request_fields = (from_user, to_user,
+def _meetup_from_row(request_fields, meetup_fields, people=None):
+    """Build the meetup plan. request_fields = (from_user_id, from_user_name,
     proposed_day, proposed_time); meetup_fields = the MEETUP_COLUMNS values.
     Until someone edits it, the plan is the original request's day and time,
-    suggested by the requester and not yet confirmed."""
-    from_user, _to_user, proposed_day, proposed_time = request_fields
-    day, time_, place, status, updated_by = meetup_fields
+    suggested by the requester and not yet confirmed. Includes
+    updated_by_id, which routes turn into updated_by_me before replying."""
+    from_id, from_name, proposed_day, proposed_time = request_fields
+    day, time_, place, status, updated_by_id, updated_by_name = meetup_fields
     if not status:
         return {"day": proposed_day, "time": proposed_time, "place": "",
-                "status": "proposed", "updated_by": from_user}
+                "status": "proposed", "updated_by": from_name, "updated_by_id": from_id}
+    name = (people or {}).get(updated_by_id, {}).get("name", updated_by_name)
     return {"day": day, "time": time_, "place": place or "",
-            "status": status, "updated_by": updated_by}
+            "status": status, "updated_by": name, "updated_by_id": updated_by_id}
 
 def _load_meetup_for_participant(c, user_id, connection_id):
-    """(caller_name, meetup, error_response). Only the two people on an
+    """(my_id, my_name, meetup, error_response). Only the two people on an
     accepted connection can see or change its meetup."""
-    caller_name = get_candidate_name(c, user_id)
-    if not caller_name:
-        return None, None, (jsonify({"error": "Complete your profile first"}), 404)
+    my_id, my_name = get_caller(c, user_id)
+    if my_id is None:
+        return None, None, None, (jsonify({"error": "Complete your profile first"}), 404)
     c.execute(
-        "SELECT from_user_name, to_user_name, proposed_day, proposed_time, status, "
+        "SELECT from_user_id, to_user_id, from_user_name, proposed_day, proposed_time, status, "
         + MEETUP_COLUMNS + " FROM connection_requests WHERE id = %s",
         (connection_id,),
     )
     row = c.fetchone()
     if row is None:
-        return None, None, (jsonify({"error": "Connection not found"}), 404)
-    if caller_name not in (row[0], row[1]):
-        return None, None, (jsonify({"error": "Not a participant in this connection"}), 403)
-    if row[4] != "accepted":
-        return None, None, (jsonify({"error": "This connection has ended"}), 400)
-    return caller_name, _meetup_from_row(row[0:4], row[5:]), None
+        return None, None, None, (jsonify({"error": "Connection not found"}), 404)
+    from_id, to_id, from_name, day, time_, status = row[:6]
+    if my_id not in (from_id, to_id):
+        return None, None, None, (jsonify({"error": "Not a participant in this connection"}), 403)
+    if status != "accepted":
+        return None, None, None, (jsonify({"error": "This connection has ended"}), 400)
+    people = get_people(c, [from_id, row[10]])
+    from_name = people.get(from_id, {}).get("name", from_name)
+    return my_id, my_name, _meetup_from_row((from_id, from_name, day, time_), row[6:], people), None
+
+def _meetup_reply(meetup, my_id):
+    reply = dict(meetup)
+    reply["updated_by_me"] = reply.pop("updated_by_id") == my_id
+    return jsonify({"meetup": reply})
 
 
 @app.route("/api/connect/<int:connection_id>/meetup", methods=["GET"])
@@ -1753,10 +1875,10 @@ def _load_meetup_for_participant(c, user_id, connection_id):
 def get_meetup(user_id, email, connection_id):
     try:
         with db_cursor() as (conn, c):
-            _, meetup, err = _load_meetup_for_participant(c, user_id, connection_id)
+            my_id, _, meetup, err = _load_meetup_for_participant(c, user_id, connection_id)
         if err:
             return err
-        return jsonify({"meetup": meetup}), 200
+        return _meetup_reply(meetup, my_id), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1776,22 +1898,23 @@ def update_meetup(user_id, email, connection_id):
             return jsonify({"error": f"Place is too long (max {MAX_PLACE_LENGTH} characters)"}), 400
 
         with db_cursor() as (conn, c):
-            caller_name, _, err = _load_meetup_for_participant(c, user_id, connection_id)
+            my_id, my_name, _, err = _load_meetup_for_participant(c, user_id, connection_id)
             if err:
                 return err
             c.execute(
                 """
                 UPDATE connection_requests
                 SET meetup_day = %s, meetup_time = %s, meetup_place = %s,
-                    meetup_status = 'proposed', meetup_updated_by = %s
+                    meetup_status = 'proposed', meetup_updated_by_id = %s,
+                    meetup_updated_by = %s
                 WHERE id = %s
                 """,
-                (day, time_, place, caller_name, connection_id),
+                (day, time_, place, my_id, my_name, connection_id),
             )
             conn.commit()
 
-        return jsonify({"meetup": {"day": day, "time": time_, "place": place,
-                                   "status": "proposed", "updated_by": caller_name}}), 200
+        return _meetup_reply({"day": day, "time": time_, "place": place, "status": "proposed",
+                              "updated_by": my_name, "updated_by_id": my_id}, my_id), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1802,10 +1925,10 @@ def confirm_meetup(user_id, email, connection_id):
     """Agree to the other person's suggestion. You can't confirm your own."""
     try:
         with db_cursor() as (conn, c):
-            caller_name, meetup, err = _load_meetup_for_participant(c, user_id, connection_id)
+            my_id, _, meetup, err = _load_meetup_for_participant(c, user_id, connection_id)
             if err:
                 return err
-            if meetup["updated_by"] == caller_name:
+            if meetup["updated_by_id"] == my_id:
                 return jsonify({"error": "The other person needs to confirm your suggestion"}), 400
             # Writes the plan out in full, which also covers a plan that was
             # still just the original request's day and time.
@@ -1813,14 +1936,16 @@ def confirm_meetup(user_id, email, connection_id):
                 """
                 UPDATE connection_requests
                 SET meetup_day = %s, meetup_time = %s, meetup_place = %s,
-                    meetup_status = 'confirmed', meetup_updated_by = %s
+                    meetup_status = 'confirmed', meetup_updated_by_id = %s,
+                    meetup_updated_by = %s
                 WHERE id = %s
                 """,
-                (meetup["day"], meetup["time"], meetup["place"], meetup["updated_by"], connection_id),
+                (meetup["day"], meetup["time"], meetup["place"],
+                 meetup["updated_by_id"], meetup["updated_by"], connection_id),
             )
             conn.commit()
 
-        return jsonify({"meetup": {**meetup, "status": "confirmed"}}), 200
+        return _meetup_reply({**meetup, "status": "confirmed"}, my_id), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1834,24 +1959,28 @@ REPORT_REASONS = {
 }
 MAX_REPORT_DETAILS = 1000
 
-def _end_connections_between(c, name_a, name_b):
+def _end_connections_between(c, a_id, b_id):
     """Mark every open request or connection between two people removed."""
     c.execute(
         """
         UPDATE connection_requests SET status = 'removed'
         WHERE status IN ('pending', 'accepted')
-          AND ((from_user_name = %s AND to_user_name = %s)
-            OR (from_user_name = %s AND to_user_name = %s))
+          AND ((from_user_id = %s AND to_user_id = %s)
+            OR (from_user_id = %s AND to_user_id = %s))
         """,
-        (name_a, name_b, name_b, name_a),
+        (a_id, b_id, b_id, a_id),
     )
 
-def _block(c, blocker, blocked):
+def _block(c, me, other):
+    """me and other are (id, name)."""
     c.execute(
-        "INSERT INTO blocks (blocker_name, blocked_name) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-        (blocker, blocked),
+        """
+        INSERT INTO blocks (blocker_id, blocked_id, blocker_name, blocked_name)
+        VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING
+        """,
+        (me[0], other[0], me[1], other[1]),
     )
-    _end_connections_between(c, blocker, blocked)
+    _end_connections_between(c, me[0], other[0])
 
 
 @app.route("/api/connect/<int:connection_id>/remove", methods=["POST"])
@@ -1859,14 +1988,14 @@ def _block(c, blocker, blocked):
 def remove_connection(user_id, email, connection_id):
     try:
         with db_cursor() as (conn, c):
-            caller_name = get_candidate_name(c, user_id)
-            if not caller_name:
+            my_id, _ = get_caller(c, user_id)
+            if my_id is None:
                 return jsonify({"error": "Complete your profile first"}), 404
 
             parties = _get_connection_parties(c, connection_id)
             if parties is None:
                 return jsonify({"error": "Connection not found"}), 404
-            if caller_name not in (parties[0], parties[1]):
+            if my_id not in (parties[0], parties[1]):
                 return jsonify({"error": "Not a participant in this connection"}), 403
 
             c.execute(
@@ -1885,17 +2014,22 @@ def remove_connection(user_id, email, connection_id):
 def list_my_blocks(user_id, email):
     try:
         with db_cursor() as (conn, c):
-            caller_name = get_candidate_name(c, user_id)
-            if not caller_name:
+            my_id, _ = get_caller(c, user_id)
+            if my_id is None:
                 return jsonify({"error": "Complete your profile first"}), 404
             c.execute(
-                "SELECT blocked_name, created_at FROM blocks WHERE blocker_name = %s ORDER BY created_at DESC",
-                (caller_name,),
+                "SELECT blocked_id, blocked_name, created_at FROM blocks WHERE blocker_id = %s ORDER BY created_at DESC",
+                (my_id,),
             )
             rows = c.fetchall()
+            people = get_people(c, [r[0] for r in rows])
 
         return jsonify({
-            "blocks": [{"user_name": r[0], "created_at": str(r[1])} for r in rows],
+            "blocks": [
+                {"user_id": r[0], "user_name": people.get(r[0], {}).get("name", r[1]),
+                 "created_at": str(r[2])}
+                for r in rows
+            ],
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1905,17 +2039,17 @@ def list_my_blocks(user_id, email):
 @require_auth
 def block_user(user_id, email):
     try:
-        blocked_name = str((request.json or {}).get("user_name", "")).strip()
-        if not blocked_name:
-            return jsonify({"error": "user_name is required"}), 400
-
+        data = request.json or {}
         with db_cursor() as (conn, c):
-            caller_name = get_candidate_name(c, user_id)
-            if not caller_name:
+            me = get_caller(c, user_id)
+            if me[0] is None:
                 return jsonify({"error": "Complete your profile first"}), 404
-            if blocked_name == caller_name:
+            other = resolve_person(c, data)
+            if other is None:
+                return jsonify({"error": "We couldn't find that person"}), 404
+            if other[0] == me[0]:
                 return jsonify({"error": "You can't block yourself"}), 400
-            _block(c, caller_name, blocked_name)
+            _block(c, me, other)
             conn.commit()
 
         return jsonify({"status": "blocked"}), 201
@@ -1923,22 +2057,32 @@ def block_user(user_id, email):
         return jsonify({"error": str(e)}), 500
 
 
+def _unblock(user_id, where, value):
+    with db_cursor() as (conn, c):
+        my_id, _ = get_caller(c, user_id)
+        if my_id is None:
+            return jsonify({"error": "Complete your profile first"}), 404
+        # Ended connections stay ended; they can send a new request.
+        c.execute("DELETE FROM blocks WHERE blocker_id = %s AND " + where, (my_id, value))
+        conn.commit()
+    return jsonify({"status": "unblocked"}), 200
+
+
+@app.route("/api/blocks/<int:blocked_id>", methods=["DELETE"])
+@require_auth
+def unblock_user(user_id, email, blocked_id):
+    try:
+        return _unblock(user_id, "blocked_id = %s", blocked_id)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/blocks/<user_name>", methods=["DELETE"])
 @require_auth
-def unblock_user(user_id, email, user_name):
+def unblock_user_by_name(user_id, email, user_name):
+    """For older app builds, which unblock by name."""
     try:
-        with db_cursor() as (conn, c):
-            caller_name = get_candidate_name(c, user_id)
-            if not caller_name:
-                return jsonify({"error": "Complete your profile first"}), 404
-            # Ended connections stay ended; they can send a new request.
-            c.execute(
-                "DELETE FROM blocks WHERE blocker_name = %s AND blocked_name = %s",
-                (caller_name, user_name),
-            )
-            conn.commit()
-
-        return jsonify({"status": "unblocked"}), 200
+        return _unblock(user_id, "blocked_name = %s", user_name)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1950,13 +2094,12 @@ def report_user(user_id, email):
     the reporter while it's reviewed."""
     try:
         data = request.json or {}
-        reported_name = str(data.get("user_name", "")).strip()
         reason = str(data.get("reason", "")).strip()
         details = str(data.get("details", "")).strip()[:MAX_REPORT_DETAILS]
         connection_id = data.get("connection_id")
 
-        if not reported_name:
-            return jsonify({"error": "user_name is required"}), 400
+        if not (data.get("user_id") or str(data.get("user_name", "")).strip()):
+            return jsonify({"error": "user_id is required"}), 400
         if reason not in REPORT_REASONS:
             return jsonify({"error": "Pick a reason for the report"}), 400
         try:
@@ -1965,17 +2108,24 @@ def report_user(user_id, email):
             connection_id = None
 
         with db_cursor() as (conn, c):
-            caller_name = get_candidate_name(c, user_id)
-            if not caller_name:
+            me = get_caller(c, user_id)
+            if me[0] is None:
                 return jsonify({"error": "Complete your profile first"}), 404
-            if reported_name == caller_name:
+            other = resolve_person(c, data)
+            if other is None:
+                return jsonify({"error": "We couldn't find that person"}), 404
+            if other[0] == me[0]:
                 return jsonify({"error": "You can't report yourself"}), 400
 
             c.execute(
-                "INSERT INTO reports (reporter_name, reported_name, connection_id, reason, details) VALUES (%s, %s, %s, %s, %s)",
-                (caller_name, reported_name, connection_id, reason, details),
+                """
+                INSERT INTO reports
+                    (reporter_id, reported_id, reporter_name, reported_name, connection_id, reason, details)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (me[0], other[0], me[1], other[1], connection_id, reason, details),
             )
-            _block(c, caller_name, reported_name)
+            _block(c, me, other)
             conn.commit()
 
         return jsonify({"status": "reported"}), 201

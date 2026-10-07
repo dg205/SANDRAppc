@@ -42,7 +42,9 @@ export default function MeetupCard({
   const [note, setNote] = useState("");
 
   const confirmed = meetup.status === "confirmed";
-  const mine = meetup.updated_by === me;
+  // Whether I made the current suggestion. The server says by id; the name
+  // check is for an older server.
+  const mine = meetup.updated_by_me ?? meetup.updated_by === me;
   const plan = describeMeetup(meetup);
 
   const run = async (action: () => Promise<Meetup>) => {

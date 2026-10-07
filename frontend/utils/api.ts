@@ -99,6 +99,7 @@ export type Match = {
 export function normalizeMatches(raw: Record<string, any>[]): Match[] {
   return raw.map((m) => ({
     ...m,
+    id: m.id ?? m.candidate?.id,
     name: m.name ?? m.candidate?.name ?? "Unknown",
     age: m.age ?? m.candidate?.age ?? 0,
     location: m.location ?? m.candidate?.location ?? "",
@@ -175,10 +176,18 @@ export async function addUser(
   return JSON.parse(text);
 }
 
+// People are told apart by id (two can share a name). The other_* and
+// sent_by_me fields are worked out by the server relative to the caller.
 export type ConnectionRequest = {
   id: number;
+  from_user_id?: number;
+  to_user_id?: number;
   from_user_name: string;
   to_user_name: string;
+  other_user_id?: number;
+  other_user_name?: string;
+  other_user_photo?: string | null;
+  sent_by_me?: boolean;
   proposed_day: string;
   proposed_time: string;
   message: string;
@@ -197,6 +206,7 @@ export type Meetup = {
   place: string;
   status: "proposed" | "confirmed";
   updated_by: string;
+  updated_by_me?: boolean;
 };
 
 export async function getMeetup(connectionId: number): Promise<Meetup> {
@@ -220,6 +230,7 @@ export function describeMeetup(m: Pick<Meetup, "day" | "time" | "place">): strin
 }
 
 export async function sendConnectRequest(request: {
+  to_user_id?: number;
   to_user_name: string;
   proposed_day: string;
   proposed_time: string;
@@ -247,22 +258,33 @@ export type Relation =
   | { status: "connected" | "sent" | "received"; request: ConnectionRequest }
   | { status: "none" };
 
-// Where `me` stands with `other`, from a list of my requests (direction=all).
+// The other person on one of my requests. The server works this out by id;
+// comparing names is only a fallback for an older server.
+export function otherPerson(
+  r: ConnectionRequest,
+  me: string,
+): { id?: number; name: string; photo?: string | null } {
+  if (r.other_user_name !== undefined) {
+    return { id: r.other_user_id, name: r.other_user_name, photo: r.other_user_photo };
+  }
+  return r.from_user_name === me
+    ? { id: r.to_user_id, name: r.to_user_name, photo: r.to_user_photo }
+    : { id: r.from_user_id, name: r.from_user_name, photo: r.from_user_photo };
+}
+
+// Where I stand with the person whose candidate id is `otherId`, from a list
+// of my requests (direction=all).
 export function relationWith(
   requests: ConnectionRequest[],
-  me: string,
-  other: string,
+  otherId: number | undefined,
 ): Relation {
-  const between = requests.filter(
-    (r) =>
-      (r.from_user_name === me && r.to_user_name === other) ||
-      (r.from_user_name === other && r.to_user_name === me),
-  );
+  if (otherId === undefined) return { status: "none" };
+  const between = requests.filter((r) => r.other_user_id === otherId);
   const accepted = between.find((r) => r.status === "accepted");
   if (accepted) return { status: "connected", request: accepted };
   const pending = between.find((r) => r.status === "pending");
   if (pending) {
-    return { status: pending.from_user_name === me ? "sent" : "received", request: pending };
+    return { status: pending.sent_by_me ? "sent" : "received", request: pending };
   }
   return { status: "none" };
 }
@@ -288,7 +310,9 @@ export async function getConnectRequests(
 
 export type ChatMessage = {
   id: number;
+  sender_id?: number;
   sender_name: string;
+  mine?: boolean;
   body: string;
   created_at: string;
 };
@@ -373,18 +397,28 @@ export async function removeConnection(connectionId: number): Promise<void> {
   await sendJson(`/api/connect/${connectionId}/remove`, "POST");
 }
 
+export type Person = { id?: number; name: string };
+
+// Someone to block or report: by id when we have it, else by name.
+function personBody(person: Person) {
+  return person.id !== undefined ? { user_id: person.id } : { user_name: person.name };
+}
+
 // Also ends any connection or request between the two of you.
-export async function blockUser(userName: string): Promise<void> {
-  await sendJson(`/api/blocks`, "POST", { user_name: userName });
+export async function blockUser(person: Person): Promise<void> {
+  await sendJson(`/api/blocks`, "POST", personBody(person));
 }
 
-export async function unblockUser(userName: string): Promise<void> {
-  await sendJson(`/api/blocks/${encodeURIComponent(userName)}`, "DELETE");
+export async function unblockUser(userId: number): Promise<void> {
+  await sendJson(`/api/blocks/${userId}`, "DELETE");
 }
 
-export async function getBlockedUsers(): Promise<string[]> {
+export async function getBlockedUsers(): Promise<{ id: number; name: string }[]> {
   const data = await sendJson(`/api/blocks`, "GET");
-  return (data.blocks ?? []).map((b: { user_name: string }) => b.user_name);
+  return (data.blocks ?? []).map((b: { user_id: number; user_name: string }) => ({
+    id: b.user_id,
+    name: b.user_name,
+  }));
 }
 
 export const REPORT_REASONS = [
@@ -397,13 +431,11 @@ export const REPORT_REASONS = [
 ] as const;
 
 // Reporting also blocks the person.
-export async function reportUser(report: {
-  user_name: string;
-  reason: string;
-  details?: string;
-  connection_id?: number;
-}): Promise<void> {
-  await sendJson(`/api/reports`, "POST", report);
+export async function reportUser(
+  person: Person,
+  report: { reason: string; details?: string; connection_id?: number },
+): Promise<void> {
+  await sendJson(`/api/reports`, "POST", { ...personBody(person), ...report });
 }
 
 // ── Account ───────────────────────────────────────────────────────────────────

@@ -32,9 +32,10 @@ function formatTime(createdAt: string): string {
 }
 
 export default function Chat() {
-  const { connectionId, otherUserName, userName } = useLocalSearchParams<{
+  const { connectionId, otherUserName, otherUserId, userName } = useLocalSearchParams<{
     connectionId?: string;
     otherUserName?: string;
+    otherUserId?: string;
     userName?: string;
   }>();
 
@@ -140,6 +141,7 @@ export default function Chat() {
       <SafetySheet
         visible={menuOpen}
         otherName={otherUserName ?? ""}
+        otherId={otherUserId ? Number(otherUserId) : undefined}
         connectionId={connId}
         onClose={() => setMenuOpen(false)}
         onFinished={() => {
@@ -179,7 +181,8 @@ export default function Chat() {
             )
           ) : (
             messages.map((m) => {
-              const mine = m.sender_name === me;
+              // The server says by id; the name check is for an older server.
+              const mine = m.mine ?? m.sender_name === me;
               return (
                 <View
                   key={m.id}

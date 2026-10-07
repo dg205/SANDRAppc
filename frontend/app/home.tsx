@@ -21,6 +21,7 @@ import {
   Match,
   describeMeetup,
   getConnectRequests,
+  otherPerson,
   matchReason,
   relationWith,
   getMyProfile,
@@ -127,7 +128,7 @@ export default function Dashboard() {
       setAllRequests(requests);
       setConnections(requests.filter((r) => r.status === "accepted"));
       setPendingRequests(
-        requests.filter((r) => r.to_user_name === me && r.status === "pending")
+        requests.filter((r) => !(r.sent_by_me ?? r.from_user_name === me) && r.status === "pending")
       );
     } catch {}
   }, [me]);
@@ -148,10 +149,15 @@ export default function Dashboard() {
   };
 
   const openChat = (c: ConnectionRequest) => {
-    const other = c.from_user_name === me ? c.to_user_name : c.from_user_name;
+    const other = otherPerson(c, me);
     router.push({
       pathname: "/profile/Chat",
-      params: { connectionId: String(c.id), otherUserName: other, userName: me },
+      params: {
+        connectionId: String(c.id),
+        otherUserName: other.name,
+        otherUserId: other.id !== undefined ? String(other.id) : "",
+        userName: me,
+      },
     });
   };
 
@@ -257,8 +263,7 @@ export default function Dashboard() {
         <>
           <Text style={styles.sectionTitle}>Your Connections</Text>
           {connections.map((c) => {
-            const iSent = c.from_user_name === me;
-            const other = iSent ? c.to_user_name : c.from_user_name;
+            const other = otherPerson(c, me);
             return (
               <TouchableOpacity
                 key={c.id}
@@ -268,12 +273,12 @@ export default function Dashboard() {
               >
                 <View style={styles.avatar}>
                   <Avatar
-                    name={other}
-                    photoUrl={iSent ? c.to_user_photo : c.from_user_photo}
+                    name={other.name}
+                    photoUrl={other.photo}
                   />
                 </View>
                 <View style={styles.connectionInfo}>
-                  <Text style={styles.connectionName}>{other}</Text>
+                  <Text style={styles.connectionName}>{other.name}</Text>
                   <Text style={styles.connectionDetail}>
                     {c.meetup
                       ? `${c.meetup.status === "confirmed" ? "✓ " : ""}${describeMeetup(c.meetup)}`
@@ -324,7 +329,7 @@ export default function Dashboard() {
           <Text style={styles.sectionTitle}>Your Top Matches</Text>
 
           {matches.map((m, i) => {
-            const relation = relationWith(allRequests, me, m.name);
+            const relation = relationWith(allRequests, m.id);
             const badge = RELATION_BADGES[relation.status];
             return (
             <TouchableOpacity

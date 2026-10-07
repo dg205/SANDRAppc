@@ -29,6 +29,8 @@ export default function MatchProfile() {
   const features = match.features ?? {};
 
   const name = match.name ?? candidate.name ?? "Unknown";
+  // Who they are; the name is only for display (two people can share one).
+  const matchId: number | undefined = match.id ?? candidate.id;
   const age = match.age ?? candidate.age ?? "";
   const location = match.location ?? candidate.location ?? "";
   const score = match.score ?? 0;
@@ -54,11 +56,11 @@ export default function MatchProfile() {
       return;
     }
     try {
-      setRelation(relationWith(await getConnectRequests(me, "all"), me, name));
+      setRelation(relationWith(await getConnectRequests(me, "all"), matchId));
     } catch {
       setRelation({ status: "none" });
     }
-  }, [me, name]);
+  }, [me, matchId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -69,7 +71,12 @@ export default function MatchProfile() {
   const openChat = (connectionId: number) =>
     router.push({
       pathname: "/profile/Chat",
-      params: { connectionId: String(connectionId), otherUserName: name, userName: me },
+      params: {
+        connectionId: String(connectionId),
+        otherUserName: name,
+        otherUserId: matchId !== undefined ? String(matchId) : "",
+        userName: me,
+      },
     });
 
   const acceptRequest = async (requestId: number) => {
@@ -313,6 +320,7 @@ export default function MatchProfile() {
                 pathname: "/profile/ConnectRequest",
                 params: {
                   matchName: name,
+                  matchId: matchId !== undefined ? String(matchId) : "",
                   fromUserName: me,
                 },
               })
