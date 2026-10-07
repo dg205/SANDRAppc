@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
+from profile_extract import fill_missing_fields
 
 load_dotenv()
 
@@ -1260,8 +1261,15 @@ def add_user(user_id, email):
             # Retaking the survey replaces the profile; keep their photo.
             c.execute("SELECT profile FROM candidates WHERE auth_user_id = %s", (user_id,))
             existing = c.fetchone()
-            if existing and json.loads(existing[0]).get("photoUrl"):
-                user_data["photoUrl"] = json.loads(existing[0])["photoUrl"]
+            existing = json.loads(existing[0]) if existing else {}
+            if existing.get("photoUrl"):
+                user_data["photoUrl"] = existing["photoUrl"]
+
+            # Fill interests, values, help, days etc. from the spoken answers.
+            # Which fields came from voice last time is the server's record,
+            # not whatever the app sends.
+            user_data["fieldsFromVoice"] = existing.get("fieldsFromVoice", [])
+            user_data = fill_missing_fields(user_data)
 
             c.execute("""
                 INSERT INTO candidates (name, profile, auth_user_id, email)
@@ -1302,6 +1310,7 @@ def update_my_user(user_id, email):
         updates = request.json or {}
         updates.pop("email", None)  # email is only ever set from the verified token
         updates.pop("photoUrl", None)  # and photoUrl only by the photo upload route
+        updates.pop("fieldsFromVoice", None)  # kept by the server, see below
 
         with db_cursor() as (conn, c):
             c.execute("SELECT id, profile FROM candidates WHERE auth_user_id = %s", (user_id,))
@@ -1311,7 +1320,15 @@ def update_my_user(user_id, email):
 
             candidate_id, profile_json = row
             p = json.loads(profile_json)
+            # A field the person changes here is theirs now, so a later survey
+            # retake won't refill it from their voice answers.
+            from_voice = [k for k in p.get("fieldsFromVoice", [])
+                          if k not in updates or updates[k] == p.get(k)]
             p.update(updates)
+            if from_voice:
+                p["fieldsFromVoice"] = from_voice
+            else:
+                p.pop("fieldsFromVoice", None)
             p["email"] = email
 
             c.execute(

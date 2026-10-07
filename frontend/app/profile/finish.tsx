@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator } fr
 import { router } from "expo-router";
 import LeaveSurveyButton, { markHasProfile } from "../../components/LeaveSurveyButton";
 import { useProfile } from "./profileContext";
-import { authFetch, addUser, getTopMatches } from "../../utils/api";
+import { authFetch, addUser, getMyProfile, getTopMatches } from "../../utils/api";
 import { saveItem, SESSION_KEY } from "../../utils/storage";
 
 export default function FinishSurvey() {
@@ -114,7 +114,10 @@ export default function FinishSurvey() {
         markHasProfile();
       }
 
-      const result = await getTopMatches(targetUser, []);
+      // Saving fills in interests, days etc. from the spoken answers, so
+      // match on the saved profile rather than the one held here.
+      const saved = await getMyProfile().catch(() => null);
+      const result = await getTopMatches(saved ?? targetUser, []);
 
       await saveItem(
         SESSION_KEY,

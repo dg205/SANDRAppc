@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import { router } from "expo-router";
+import { RETRY_MESSAGE, needsRetry } from "../../utils/transcript";
 import ReadAloudButton from "../../components/ReadAloudButton";
 import { stopReading } from "../../utils/speech";
 import LeaveSurveyButton from "../../components/LeaveSurveyButton";
@@ -26,6 +27,7 @@ export default function Values() {
   const [csvText, setCsvText] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [transcribedText, setTranscribedText] = useState("");
+  const [retryHint, setRetryHint] = useState(false);
   const [serverAudioPath, setServerAudioPath] = useState<string | null>(null);
 
   const handleFinish = async ({
@@ -42,6 +44,7 @@ export default function Values() {
     setAudioUri(audioUri);
     setCsvText(csv);
     setTranscribedText(text);
+    setRetryHint(needsRetry(text));
     setServerAudioPath(uploadedAudioPath ?? null);
     setConfirmed(false);
 
@@ -168,12 +171,17 @@ export default function Values() {
 
           <Text style={styles.talkHint}>Take as much time as you need</Text>
 
-          {transcribedText !== "" && (
+          {retryHint && <Text style={styles.retryHint}>{RETRY_MESSAGE}</Text>}
+
+          {(transcribedText !== "" || retryHint) && (
             <>
               <TextInput
                 style={styles.transcriptInput}
                 value={transcribedText}
-                onChangeText={setTranscribedText}
+                onChangeText={(t) => {
+                  setTranscribedText(t);
+                  setRetryHint(false);
+                }}
                 multiline
                 textAlignVertical="top"
                 placeholder="Your response will appear here..."
@@ -183,6 +191,10 @@ export default function Values() {
                 style={styles.confirmButton}
                 onPress={() => {
                   Keyboard.dismiss();
+                  if (needsRetry(transcribedText)) {
+                    setRetryHint(true);
+                    return;
+                  }
                   updateProfile({ commPreferenceText: transcribedText, commPreferenceAudioUri: audioUri, commPreferenceAudioServerPath: serverAudioPath });
                   setConfirmed(true);
                 }}
@@ -246,6 +258,16 @@ export default function Values() {
 }
 
 const styles = StyleSheet.create({
+  retryHint: {
+    fontSize: 15,
+    color: "#B45309",
+    backgroundColor: "#FFF7E6",
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 12,
+    textAlign: "center",
+    lineHeight: 21,
+  },
   container: {
     flex: 1,
     backgroundColor: "#EAF3FF",
