@@ -47,11 +47,15 @@ export default function Login() {
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
-        {/* After an expiry the screen behind this one needs a login, so
-            Back goes to the welcome screen instead. */}
+        {/* After an expiry the screen behind this one needs a login, and
+            coming from Sign up replaces the screen, so in those cases Back
+            goes to the welcome screen instead. */}
         <TouchableOpacity
+          hitSlop={12}
           onPress={() =>
-            sessionExpired ? router.replace("/welcome") : router.back()
+            sessionExpired || !router.canGoBack()
+              ? router.replace("/welcome")
+              : router.back()
           }
           style={styles.backBtn}
         >

@@ -14,6 +14,8 @@ import {
 } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import { router } from "expo-router";
+import ReadAloudButton from "../../components/ReadAloudButton";
+import { stopReading } from "../../utils/speech";
 import LeaveSurveyButton from "../../components/LeaveSurveyButton";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { useProfile } from "./profileContext";
@@ -149,12 +151,14 @@ export default function Values() {
             in-person meeting, group activity, or through a
             caregiver/family member.
           </Text>
+          <ReadAloudButton text="How do you prefer to communicate with others? For example, phone call, text message, video call, in-person meeting, group activity, or through a caregiver/family member." />
 
           <View style={styles.recorderWrap}>
             <MicrophoneRecorder
               onFinish={handleFinish}
               onRecordingChange={(isRecording) => {
                 if (isRecording) {
+                  stopReading();
                   setConfirmed(false);
                   setTranscribedText("");
                 }

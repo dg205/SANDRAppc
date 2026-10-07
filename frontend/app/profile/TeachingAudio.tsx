@@ -14,6 +14,8 @@ import {
 import * as FileSystem from "expo-file-system/legacy";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
+import ReadAloudButton from "../../components/ReadAloudButton";
+import { stopReading } from "../../utils/speech";
 import LeaveSurveyButton from "../../components/LeaveSurveyButton";
 import { useProfile } from "./profileContext";
 
@@ -152,12 +154,14 @@ export default function TeachingAudio() {
             Example prompts: mornings, afternoons, evenings, weekdays,
             weekends, flexible schedule.
           </Text>
+          <ReadAloudButton text="When are you usually available for social activities or conversations? For example, mornings, afternoons, evenings, weekdays, weekends, flexible schedule." />
 
           <View style={styles.recorderWrap}>
             <MicrophoneRecorder
               onFinish={handleFinish}
               onRecordingChange={(isRecording) => {
                 if (isRecording) {
+                  stopReading();
                   setConfirmed(false);
                   setTranscribedText("");
                 }

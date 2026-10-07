@@ -14,6 +14,8 @@ import {
 import * as FileSystem from "expo-file-system/legacy";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
+import ReadAloudButton from "../../components/ReadAloudButton";
+import { stopReading } from "../../utils/speech";
 import LeaveSurveyButton from "../../components/LeaveSurveyButton";
 import { useProfile } from "./profileContext";
 
@@ -153,12 +155,14 @@ export default function Hobbies() {
             activities, volunteering, classes, music, art, or other
             activities.
           </Text>
+          <ReadAloudButton text="What types of social activities would you like to do with another person or group? For example, walking, coffee, conversation, games, religious activities, volunteering, classes, music, art, or other activities." />
 
           <View style={styles.recorderWrap}>
             <MicrophoneRecorder
               onFinish={handleFinish}
               onRecordingChange={(isRecording) => {
                 if (isRecording) {
+                  stopReading();
                   setConfirmed(false);
                   setTranscribedText("");
                 }

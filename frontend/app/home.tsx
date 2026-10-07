@@ -19,7 +19,9 @@ import { getItem, removeItem, SESSION_KEY } from "../utils/storage";
 import {
   ConnectionRequest,
   Match,
+  describeMeetup,
   getConnectRequests,
+  matchReason,
   relationWith,
   getMyProfile,
   getTopMatches,
@@ -273,7 +275,9 @@ export default function Dashboard() {
                 <View style={styles.connectionInfo}>
                   <Text style={styles.connectionName}>{other}</Text>
                   <Text style={styles.connectionDetail}>
-                    {c.proposed_day} · {c.proposed_time}
+                    {c.meetup
+                      ? `${c.meetup.status === "confirmed" ? "✓ " : ""}${describeMeetup(c.meetup)}`
+                      : `${c.proposed_day} · ${c.proposed_time}`}
                   </Text>
                 </View>
                 <View style={styles.chatPill}>
@@ -358,6 +362,10 @@ export default function Dashboard() {
                 <View style={[styles.relationBadge, { backgroundColor: badge.color }]}>
                   <Text style={styles.relationText}>{badge.label}</Text>
                 </View>
+              )}
+
+              {!!matchReason(m) && (
+                <Text style={styles.matchReason}>{matchReason(m)}</Text>
               )}
 
               <Text style={styles.matchDetail}>Age: {m.age}</Text>
@@ -522,6 +530,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   relationText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  matchReason: { fontSize: 15, color: "#1A1A2E", fontStyle: "italic", marginBottom: 8, lineHeight: 21 },
   scoreBar: {
     height: 8,
     backgroundColor: "#DDE3ED",

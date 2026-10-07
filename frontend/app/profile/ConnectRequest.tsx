@@ -14,32 +14,7 @@ import {
 import { useLocalSearchParams, router } from "expo-router";
 import { sendConnectRequest } from "../../utils/api";
 import { getItem, SESSION_KEY } from "../../utils/storage";
-
-const DAYS = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
-
-// Picked from buttons rather than typed, so every request stores a time
-// like "2:00 PM" instead of whatever was typed ("2", "afternoon", ...).
-const TIMES = [
-  "9:00 AM",
-  "10:00 AM",
-  "11:00 AM",
-  "12:00 PM",
-  "1:00 PM",
-  "2:00 PM",
-  "3:00 PM",
-  "4:00 PM",
-  "5:00 PM",
-  "6:00 PM",
-  "7:00 PM",
-];
+import { DAYS, TIMES } from "../../utils/schedule";
 
 export default function ConnectRequest() {
   const { matchName, fromUserName } = useLocalSearchParams<{
@@ -98,7 +73,7 @@ export default function ConnectRequest() {
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity hitSlop={12} onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
 

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ScrollView } from "react-native";
 import { router } from "expo-router";
+import ReadAloudButton from "../../components/ReadAloudButton";
 import LeaveSurveyButton from "../../components/LeaveSurveyButton";
 import { useProfile, type UserType } from "./profileContext";
 
@@ -44,6 +45,7 @@ export default function Age() {
 
       <View style={styles.card}>
         <Text style={styles.question}>Question 1 of 7: About You</Text>
+        <ReadAloudButton text="What's your name? How old are you? How would you like to use Sandrapp? Choose: I'm looking for companionship, or I'd like to be a companion." />
         <Text style={styles.title}>What's your name?</Text>
         <TextInput
           style={styles.input}

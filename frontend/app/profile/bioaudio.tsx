@@ -14,6 +14,8 @@ import {
 import * as FileSystem from "expo-file-system/legacy";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
+import ReadAloudButton from "../../components/ReadAloudButton";
+import { stopReading } from "../../utils/speech";
 import LeaveSurveyButton from "../../components/LeaveSurveyButton";
 import { useProfile } from "./profileContext";
 
@@ -151,12 +153,14 @@ export default function BioAudio() {
             Example prompts: hobbies, favorite activities, interests, things
             you like to talk about.
           </Text>
+          <ReadAloudButton text="Tell us a little about yourself and what you enjoy doing. For example, hobbies, favorite activities, interests, things you like to talk about." />
 
           <View style={styles.recorderWrap}>
             <MicrophoneRecorder
               onFinish={handleFinish}
               onRecordingChange={(isRecording) => {
                 if (isRecording) {
+                  stopReading();
                   setConfirmed(false);
                   setTranscribedText("");
                 }

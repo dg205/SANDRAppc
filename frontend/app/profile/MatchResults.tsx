@@ -8,7 +8,7 @@ import {
   SafeAreaView,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
-import { Match, normalizeMatches } from "../../utils/api";
+import { Match, matchReason, normalizeMatches } from "../../utils/api";
 
 export default function MatchResults() {
   const { matches: matchesParam, userName } = useLocalSearchParams<{
@@ -65,6 +65,9 @@ export default function MatchResults() {
         </View>
       </View>
 
+      {!!matchReason(match) && (
+        <Text style={styles.matchReason}>{matchReason(match)}</Text>
+      )}
       <Text style={styles.matchDetail}>Age: {match.age}</Text>
       <Text style={styles.matchDetail}>{cap(match.location)}</Text>
 
@@ -293,6 +296,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
+  matchReason: { fontSize: 15, color: "#1A1A2E", fontStyle: "italic", marginBottom: 8, lineHeight: 21 },
   matchDetail: {
     fontSize: 15,
     color: "#444",

@@ -27,6 +27,7 @@ import {
 } from "../utils/api";
 import { useAuth } from "../utils/AuthContext";
 import { confirmAction } from "../utils/confirm";
+import { hasNativeModule } from "../utils/nativeModules";
 import Avatar from "../components/Avatar";
 
 // ── Selectable options ────────────────────────────────────────────────────────
@@ -110,6 +111,7 @@ export default function EditProfile() {
     // up front would crash this whole screen instead of just this button.
     let ImagePicker: typeof import("expo-image-picker");
     try {
+      if (!hasNativeModule("ExponentImagePicker")) throw new Error("missing");
       ImagePicker = await import("expo-image-picker");
     } catch {
       setPhotoError("Adding a photo needs the latest version of the app.");
@@ -237,7 +239,7 @@ export default function EditProfile() {
     <ScrollView style={styles.bg} contentContainerStyle={styles.scroll}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity hitSlop={12} onPress={() => router.back()}>
           <Text style={styles.backBtn}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit Profile</Text>
@@ -262,7 +264,7 @@ export default function EditProfile() {
             )}
           </TouchableOpacity>
           {!!photoUrl && !photoBusy && (
-            <TouchableOpacity onPress={removePhoto}>
+            <TouchableOpacity hitSlop={12} onPress={removePhoto}>
               <Text style={styles.removePhotoText}>Remove photo</Text>
             </TouchableOpacity>
           )}
@@ -349,7 +351,7 @@ export default function EditProfile() {
           {blocked.map((person) => (
             <View key={person} style={styles.blockedRow}>
               <Text style={styles.blockedName}>{person}</Text>
-              <TouchableOpacity onPress={() => unblock(person)}>
+              <TouchableOpacity hitSlop={12} onPress={() => unblock(person)}>
                 <Text style={styles.unblockText}>Unblock</Text>
               </TouchableOpacity>
             </View>
@@ -513,7 +515,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#B0C8F0",
     paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingVertical: 10,
     backgroundColor: "#fff",
   },
   chipActive: {

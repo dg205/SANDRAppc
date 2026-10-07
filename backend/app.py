@@ -448,6 +448,13 @@ def init_db():
                 UNIQUE (auth_user_id, expo_push_token)
             )
         """)
+        # The meetup plan for a connection. NULL until someone changes it, in
+        # which case it's the day/time from the original request, unconfirmed.
+        c.execute("ALTER TABLE connection_requests ADD COLUMN IF NOT EXISTS meetup_day TEXT")
+        c.execute("ALTER TABLE connection_requests ADD COLUMN IF NOT EXISTS meetup_time TEXT")
+        c.execute("ALTER TABLE connection_requests ADD COLUMN IF NOT EXISTS meetup_place TEXT")
+        c.execute("ALTER TABLE connection_requests ADD COLUMN IF NOT EXISTS meetup_status TEXT")
+        c.execute("ALTER TABLE connection_requests ADD COLUMN IF NOT EXISTS meetup_updated_by TEXT")
         # Blocks and reports are keyed by display name, like connection_requests.
         c.execute("""
             CREATE TABLE IF NOT EXISTS blocks (
@@ -1543,7 +1550,8 @@ def get_connect_requests(user_id, email, user_name):
 
             # Removed connections (unfriended or blocked) drop out of every list.
             c.execute(
-                "SELECT id, from_user_name, to_user_name, proposed_day, proposed_time, message, status, created_at FROM connection_requests WHERE "
+                "SELECT id, from_user_name, to_user_name, proposed_day, proposed_time, message, status, created_at, "
+                + MEETUP_COLUMNS + " FROM connection_requests WHERE "
                 + where + " AND status <> 'removed' ORDER BY created_at DESC",
                 params
             )
@@ -1562,6 +1570,7 @@ def get_connect_requests(user_id, email, user_name):
                 "created_at": str(row[7]),
                 "from_user_photo": photos.get(row[1]),
                 "to_user_photo": photos.get(row[2]),
+                "meetup": _meetup_from_row(row[1:3] + row[3:5], row[8:]),
             }
             for row in rows
         ]
@@ -1694,6 +1703,124 @@ def get_messages(user_id, email, connection_id):
                 for r in rows
             ],
         }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Meetup Routes - the plan for when and where two connected people meet
+# ---------------------------------------------------------------------------
+
+MAX_PLACE_LENGTH = 120
+MEETUP_COLUMNS = "meetup_day, meetup_time, meetup_place, meetup_status, meetup_updated_by"
+
+def _meetup_from_row(request_fields, meetup_fields):
+    """Build the meetup plan. request_fields = (from_user, to_user,
+    proposed_day, proposed_time); meetup_fields = the MEETUP_COLUMNS values.
+    Until someone edits it, the plan is the original request's day and time,
+    suggested by the requester and not yet confirmed."""
+    from_user, _to_user, proposed_day, proposed_time = request_fields
+    day, time_, place, status, updated_by = meetup_fields
+    if not status:
+        return {"day": proposed_day, "time": proposed_time, "place": "",
+                "status": "proposed", "updated_by": from_user}
+    return {"day": day, "time": time_, "place": place or "",
+            "status": status, "updated_by": updated_by}
+
+def _load_meetup_for_participant(c, user_id, connection_id):
+    """(caller_name, meetup, error_response). Only the two people on an
+    accepted connection can see or change its meetup."""
+    caller_name = get_candidate_name(c, user_id)
+    if not caller_name:
+        return None, None, (jsonify({"error": "Complete your profile first"}), 404)
+    c.execute(
+        "SELECT from_user_name, to_user_name, proposed_day, proposed_time, status, "
+        + MEETUP_COLUMNS + " FROM connection_requests WHERE id = %s",
+        (connection_id,),
+    )
+    row = c.fetchone()
+    if row is None:
+        return None, None, (jsonify({"error": "Connection not found"}), 404)
+    if caller_name not in (row[0], row[1]):
+        return None, None, (jsonify({"error": "Not a participant in this connection"}), 403)
+    if row[4] != "accepted":
+        return None, None, (jsonify({"error": "This connection has ended"}), 400)
+    return caller_name, _meetup_from_row(row[0:4], row[5:]), None
+
+
+@app.route("/api/connect/<int:connection_id>/meetup", methods=["GET"])
+@require_auth
+def get_meetup(user_id, email, connection_id):
+    try:
+        with db_cursor() as (conn, c):
+            _, meetup, err = _load_meetup_for_participant(c, user_id, connection_id)
+        if err:
+            return err
+        return jsonify({"meetup": meetup}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/connect/<int:connection_id>/meetup", methods=["PUT"])
+@require_auth
+def update_meetup(user_id, email, connection_id):
+    """Suggest a new day, time and place. The other person then confirms it."""
+    try:
+        data = request.json or {}
+        day = str(data.get("day", "")).strip()
+        time_ = str(data.get("time", "")).strip()
+        place = str(data.get("place", "")).strip()
+        if not day or not time_:
+            return jsonify({"error": "Pick a day and a time"}), 400
+        if len(place) > MAX_PLACE_LENGTH:
+            return jsonify({"error": f"Place is too long (max {MAX_PLACE_LENGTH} characters)"}), 400
+
+        with db_cursor() as (conn, c):
+            caller_name, _, err = _load_meetup_for_participant(c, user_id, connection_id)
+            if err:
+                return err
+            c.execute(
+                """
+                UPDATE connection_requests
+                SET meetup_day = %s, meetup_time = %s, meetup_place = %s,
+                    meetup_status = 'proposed', meetup_updated_by = %s
+                WHERE id = %s
+                """,
+                (day, time_, place, caller_name, connection_id),
+            )
+            conn.commit()
+
+        return jsonify({"meetup": {"day": day, "time": time_, "place": place,
+                                   "status": "proposed", "updated_by": caller_name}}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/connect/<int:connection_id>/meetup/confirm", methods=["POST"])
+@require_auth
+def confirm_meetup(user_id, email, connection_id):
+    """Agree to the other person's suggestion. You can't confirm your own."""
+    try:
+        with db_cursor() as (conn, c):
+            caller_name, meetup, err = _load_meetup_for_participant(c, user_id, connection_id)
+            if err:
+                return err
+            if meetup["updated_by"] == caller_name:
+                return jsonify({"error": "The other person needs to confirm your suggestion"}), 400
+            # Writes the plan out in full, which also covers a plan that was
+            # still just the original request's day and time.
+            c.execute(
+                """
+                UPDATE connection_requests
+                SET meetup_day = %s, meetup_time = %s, meetup_place = %s,
+                    meetup_status = 'confirmed', meetup_updated_by = %s
+                WHERE id = %s
+                """,
+                (meetup["day"], meetup["time"], meetup["place"], meetup["updated_by"], connection_id),
+            )
+            conn.commit()
+
+        return jsonify({"meetup": {**meetup, "status": "confirmed"}}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1897,6 +2024,15 @@ def save_survey_responses(user_id, email):
             return jsonify({"error": "user_name is required"}), 400
 
         with db_cursor() as (conn, c):
+            # Retaking the survey replaces the previous answers rather than
+            # adding another full copy of them.
+            c.execute(
+                "SELECT audio_file_path FROM survey_responses WHERE lower(user_email) = lower(%s)",
+                (email,),
+            )
+            old_audio = {r[0] for r in c.fetchall() if r[0]}
+            c.execute("DELETE FROM survey_responses WHERE lower(user_email) = lower(%s)", (email,))
+
             for r in responses:
                 question_key = r.get("question_key", "")
                 audio_file_path = r.get("audio_file_path")
@@ -1911,6 +2047,12 @@ def save_survey_responses(user_id, email):
 
             conn.commit()
 
+        # Recordings from the old answers that the new ones don't reuse.
+        kept = {r.get("audio_file_path") for r in responses}
+        delete_from_storage(
+            AUDIO_BUCKET,
+            [storage_path_from_url(AUDIO_BUCKET, url) for url in old_audio - kept],
+        )
         return jsonify({"status": "saved", "count": len(responses)}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500

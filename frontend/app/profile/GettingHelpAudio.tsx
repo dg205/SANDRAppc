@@ -14,6 +14,8 @@ import {
 import * as FileSystem from "expo-file-system/legacy";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
+import ReadAloudButton from "../../components/ReadAloudButton";
+import { stopReading } from "../../utils/speech";
 import LeaveSurveyButton from "../../components/LeaveSurveyButton";
 import { useProfile } from "./profileContext";
 
@@ -153,12 +155,14 @@ export default function GettingHelpAudio() {
             mobility needs, comfort level, caregiver involvement, preferred
             location, or safety concerns.
           </Text>
+          <ReadAloudButton text="Is there anything important we should consider when suggesting possible social matches? For example, transportation needs, language preference, mobility needs, comfort level, caregiver involvement, preferred location, or safety concerns." />
 
           <View style={styles.recorderWrap}>
             <MicrophoneRecorder
               onFinish={handleFinish}
               onRecordingChange={(isRecording) => {
                 if (isRecording) {
+                  stopReading();
                   setConfirmed(false);
                   setTranscribedText("");
                 }

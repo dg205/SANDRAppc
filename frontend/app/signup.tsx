@@ -58,7 +58,13 @@ export default function Signup() {
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        {/* Coming back from the survey (or from Log in) replaces the
+            screen, so there may be nothing to go back to. */}
+        <TouchableOpacity
+          hitSlop={12}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace("/welcome"))}
+          style={styles.backBtn}
+        >
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
 

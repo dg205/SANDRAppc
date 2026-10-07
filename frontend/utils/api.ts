@@ -108,6 +108,39 @@ export function normalizeMatches(raw: Record<string, any>[]): Match[] {
   }));
 }
 
+// "music", "music and gardening", "music, art and gardening"
+function joinWords(words: string[]): string {
+  if (words.length <= 1) return words.join("");
+  return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+// One line on why two people were matched, built from the backend's
+// feature breakdown: "You both enjoy music and live near each other."
+// Uses the two strongest reasons it can find; "" if there are none.
+export function matchReason(m: Match): string {
+  const f = m.features ?? {};
+  const words = (v: unknown) =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  const interests = words(f.shared_interests);
+  const values = words(f.shared_values);
+  // Almost everyone speaks English, so it isn't worth calling out.
+  const languages = words(f.shared_languages).filter((l) => l.toLowerCase() !== "english");
+
+  const reasons: string[] = [];
+  if (interests.length) reasons.push(`both enjoy ${joinWords(interests.slice(0, 2))}`);
+  if (f.same_city) reasons.push("live near each other");
+  if (values.length) reasons.push(`both value ${joinWords(values.slice(0, 2))}`);
+  if (languages.length) reasons.push(`both speak ${joinWords(languages.slice(0, 2).map(cap))}`);
+  if (f.shared_faith) reasons.push("share the same faith");
+
+  if (!reasons.length) return "";
+  return `You ${reasons.slice(0, 2).join(" and ")}.`;
+}
+
+function cap(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
 // The signed-in user's saved profile, or null if they haven't made one yet.
 export async function getMyProfile(): Promise<Record<string, any> | null> {
   const res = await authFetch(`/api/users/me`);
@@ -153,7 +186,38 @@ export type ConnectionRequest = {
   created_at: string;
   from_user_photo?: string | null;
   to_user_photo?: string | null;
+  meetup?: Meetup;
 };
+
+// When and where two connected people plan to meet. `updated_by` suggested
+// the current plan; the other person confirms it.
+export type Meetup = {
+  day: string;
+  time: string;
+  place: string;
+  status: "proposed" | "confirmed";
+  updated_by: string;
+};
+
+export async function getMeetup(connectionId: number): Promise<Meetup> {
+  return (await sendJson(`/api/connect/${connectionId}/meetup`, "GET")).meetup;
+}
+
+export async function updateMeetup(
+  connectionId: number,
+  plan: { day: string; time: string; place: string },
+): Promise<Meetup> {
+  return (await sendJson(`/api/connect/${connectionId}/meetup`, "PUT", plan)).meetup;
+}
+
+export async function confirmMeetup(connectionId: number): Promise<Meetup> {
+  return (await sendJson(`/api/connect/${connectionId}/meetup/confirm`, "POST")).meetup;
+}
+
+// "Tuesday · 2:00 PM · Library"
+export function describeMeetup(m: Pick<Meetup, "day" | "time" | "place">): string {
+  return [m.day, m.time, m.place].filter(Boolean).join(" · ");
+}
 
 export async function sendConnectRequest(request: {
   to_user_name: string;

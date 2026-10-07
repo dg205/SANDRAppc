@@ -113,7 +113,7 @@ export default function DevSeed() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.inner}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity hitSlop={12} onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
 

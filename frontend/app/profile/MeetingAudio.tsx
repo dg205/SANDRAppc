@@ -14,6 +14,8 @@ import {
 import * as FileSystem from "expo-file-system/legacy";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
+import ReadAloudButton from "../../components/ReadAloudButton";
+import { stopReading } from "../../utils/speech";
 import LeaveSurveyButton from "../../components/LeaveSurveyButton";
 import { useProfile } from "./profileContext";
 
@@ -154,12 +156,14 @@ export default function MeetingAudio() {
             age group, people who speak your language, people nearby, people
             with similar life experiences.
           </Text>
+          <ReadAloudButton text="What kind of people would you enjoy connecting with? For example, people with similar interests, people in your age group, people who speak your language, people nearby, people with similar life experiences." />
 
           <View style={styles.recorderWrap}>
             <MicrophoneRecorder
               onFinish={handleFinish}
               onRecordingChange={(isRecording) => {
                 if (isRecording) {
+                  stopReading();
                   setConfirmed(false);
                   setTranscribedText("");
                 }

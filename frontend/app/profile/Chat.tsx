@@ -13,8 +13,10 @@ import {
   StatusBar,
 } from "react-native";
 import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
-import { ChatMessage, getMessages, sendMessage } from "../../utils/api";
+import { ChatMessage, Meetup, getMeetup, getMessages, sendMessage } from "../../utils/api";
 import SafetySheet from "../../components/SafetySheet";
+import MeetupCard from "../../components/MeetupCard";
+import { readAloud, stopReading } from "../../utils/speech";
 
 const POLL_MS = 5000;
 const MAX_LENGTH = 2000;
@@ -45,6 +47,7 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [meetup, setMeetup] = useState<Meetup | null>(null);
 
   const newestId = useRef(0);
   const scrollRef = useRef<ScrollView>(null);
@@ -71,6 +74,9 @@ export default function Chat() {
     } finally {
       setLoading(false);
     }
+    // Picks up a plan the other person changed. A failure here just leaves
+    // the card as it was (or hidden), and the chat keeps working.
+    getMeetup(connId).then(setMeetup).catch(() => {});
   }, [connId, me]);
 
   // Poll only while this screen is in view.
@@ -78,7 +84,10 @@ export default function Chat() {
     useCallback(() => {
       load();
       const timer = setInterval(load, POLL_MS);
-      return () => clearInterval(timer);
+      return () => {
+        clearInterval(timer);
+        stopReading();
+      };
     }, [load])
   );
 
@@ -103,10 +112,16 @@ export default function Chat() {
 
   const canSend = draft.trim().length > 0 && !sending;
 
+  const speak = async (text: string) => {
+    if (!(await readAloud(text))) {
+      setError("Reading aloud needs the latest version of the app.");
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerName} numberOfLines={1}>
@@ -115,6 +130,7 @@ export default function Chat() {
         <TouchableOpacity
           style={styles.menuBtn}
           onPress={() => setMenuOpen(true)}
+          hitSlop={12}
           accessibilityLabel="Remove, block or report"
         >
           <Text style={styles.menuText}>•••</Text>
@@ -131,6 +147,16 @@ export default function Chat() {
           router.back();
         }}
       />
+
+      {meetup && (
+        <MeetupCard
+          connectionId={connId}
+          meetup={meetup}
+          me={me}
+          otherName={otherUserName ?? ""}
+          onChange={setMeetup}
+        />
+      )}
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -162,7 +188,18 @@ export default function Chat() {
                   <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
                     <Text style={mine ? styles.textMine : styles.textTheirs}>{m.body}</Text>
                   </View>
-                  <Text style={styles.time}>{formatTime(m.created_at)}</Text>
+                  <View style={styles.metaRow}>
+                    <Text style={styles.time}>{formatTime(m.created_at)}</Text>
+                    {!mine && (
+                      <TouchableOpacity
+                        onPress={() => speak(m.body)}
+                        hitSlop={10}
+                        accessibilityLabel="Read this message aloud"
+                      >
+                        <Text style={styles.readAloud}>🔊 Read aloud</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               );
             })
@@ -243,7 +280,9 @@ const styles = StyleSheet.create({
   bubbleTheirs: { backgroundColor: "#fff", borderBottomLeftRadius: 4 },
   textMine: { color: "#fff", fontSize: 16, lineHeight: 22 },
   textTheirs: { color: "#1A1A2E", fontSize: 16, lineHeight: 22 },
-  time: { fontSize: 11, color: "#888", marginTop: 3, marginHorizontal: 4 },
+  time: { fontSize: 11, color: "#888", marginHorizontal: 4 },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 3 },
+  readAloud: { fontSize: 13, color: "#2F80ED", fontWeight: "600" },
 
   errorText: {
     fontSize: 14,

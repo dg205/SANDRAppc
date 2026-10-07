@@ -142,7 +142,7 @@ export default function MatchProfile() {
       <ScrollView contentContainerStyle={styles.scroll}>
 
         {/* Back */}
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity hitSlop={12} onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
 
