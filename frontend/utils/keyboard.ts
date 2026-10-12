@@ -99,6 +99,11 @@ export function useKeyboardAwareScroll() {
     scrollProps: {
       ref: scrollRef,
       automaticallyAdjustKeyboardInsets: true,
+      // In the apps, dragging the page puts the keyboard away. In a browser
+      // "on-drag" closes it on ANY scroll, including the one above that
+      // brings the box into view (and Safari's own), so the keyboard would
+      // open and immediately close.
+      keyboardDismissMode: (Platform.OS === "web" ? "none" : "on-drag") as "none" | "on-drag",
     },
   };
 }

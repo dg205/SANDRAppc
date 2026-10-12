@@ -138,7 +138,6 @@ export default function TeachingAudio() {
         {...keyboard.scrollProps}
         contentContainerStyle={[styles.inner, { paddingBottom: 40 + keyboard.contentPadding }]}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
       >
         <LeaveSurveyButton />
         <Text style={styles.appName}>Sandrapp</Text>

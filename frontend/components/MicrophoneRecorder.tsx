@@ -150,13 +150,17 @@ export default function MicrophoneRecorder({
     setTranscription(text);
     setConfirmed(false);
 
-    setPendingResult({
+    const result = {
       audioUri: null,
       text,
       csv: csvContent,
       csvUri: null,
       uploadedAudioPath: null,
-    });
+    };
+    setPendingResult(result);
+    // Nothing was heard: still tell the screen, so it can ask them to try
+    // again or type instead. (Results with text are passed on above.)
+    if (!text) onFinish?.(result);
   }
 
   // -----------------------------
@@ -274,27 +278,14 @@ export default function MicrophoneRecorder({
     try {
       const formData = new FormData();
 
-      if (Platform.OS === "web") {
-        // In a browser the recording is a blob: URL, and FormData needs the
-        // actual audio. Browsers usually record WebM; the server reads the
-        // format from the file extension, so name it to match.
-        const blob = await (await fetch(uri)).blob();
-        const ext = blob.type.includes("ogg")
-          ? "ogg"
-          : blob.type.includes("mp4") || blob.type.includes("m4a")
-            ? "m4a"
-            : "webm";
-        formData.append("audio", blob, `recording.${ext}`);
-      } else {
-        formData.append(
-          "audio",
-          {
-            uri,
-            name: "recording.m4a",
-            type: "audio/m4a",
-          } as any
-        );
-      }
+      formData.append(
+        "audio",
+        {
+          uri,
+          name: "recording.m4a",
+          type: "audio/m4a",
+        } as any
+      );
 
       const response = await fetch(`${BASE_URL}/api/transcribe`, {
         method: "POST",
@@ -327,13 +318,16 @@ export default function MicrophoneRecorder({
         }
       }
 
-      setPendingResult({
+      const result = {
         audioUri: savedAudioPath || uri,
         text,
         csv: csvContent,
         csvUri: savedCsvPath,
         uploadedAudioPath,
-      });
+      };
+      setPendingResult(result);
+      // Same as on web: an empty transcript still gets reported.
+      if (!text) onFinish?.(result);
     } catch (err) {
       console.warn("Transcription/upload error:", err);
 
