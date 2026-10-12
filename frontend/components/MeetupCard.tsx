@@ -17,6 +17,7 @@ import {
   updateMeetup,
 } from "../utils/api";
 import { DAYS, PLACE_IDEAS, TIMES } from "../utils/schedule";
+import { useKeyboardInset } from "../utils/keyboard";
 
 // The meetup plan at the top of a chat: shows it, lets the other person
 // confirm it, lets either person suggest a change, and shares it with family.
@@ -33,6 +34,7 @@ export default function MeetupCard({
   otherName: string;
   onChange: (next: Meetup) => void;
 }) {
+  const keyboardInset = useKeyboardInset();
   const [editing, setEditing] = useState(false);
   const [day, setDay] = useState(meetup.day);
   const [time, setTime] = useState(meetup.time);
@@ -118,7 +120,7 @@ export default function MeetupCard({
 
       <Modal visible={editing} transparent animationType="slide" onRequestClose={() => setEditing(false)}>
         <View style={styles.backdrop}>
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { marginBottom: keyboardInset }]}>
             <ScrollView keyboardShouldPersistTaps="handled">
               <Text style={styles.sheetTitle}>Suggest a meetup</Text>
               <Text style={styles.sheetHint}>

@@ -15,6 +15,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import MicrophoneRecorder from "../../components/MicrophoneRecorder";
 import { router } from "expo-router";
 import { RETRY_MESSAGE, needsRetry } from "../../utils/transcript";
+import { useKeyboardAwareScroll } from "../../utils/keyboard";
 import ReadAloudButton from "../../components/ReadAloudButton";
 import { stopReading } from "../../utils/speech";
 import LeaveSurveyButton from "../../components/LeaveSurveyButton";
@@ -27,6 +28,8 @@ export default function MeetingAudio() {
   const [confirmed, setConfirmed] = useState(false);
   const [transcribedText, setTranscribedText] = useState("");
   const [retryHint, setRetryHint] = useState(false);
+  // Keeps the answer box above the on-screen keyboard while editing.
+  const keyboard = useKeyboardAwareScroll();
   const [serverAudioPath, setServerAudioPath] = useState<string | null>(null);
 
   const handleFinish = async ({
@@ -131,7 +134,12 @@ export default function MeetingAudio() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+      <ScrollView
+        {...keyboard.scrollProps}
+        contentContainerStyle={[styles.inner, { paddingBottom: 40 + keyboard.contentPadding }]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         <LeaveSurveyButton />
         <Text style={styles.appName}>Sandrapp</Text>
 
@@ -182,6 +190,7 @@ export default function MeetingAudio() {
             <>
               <TextInput
                 style={styles.transcriptInput}
+                onFocus={keyboard.onInputFocus}
                 value={transcribedText}
                 onChangeText={(t) => {
                   setTranscribedText(t);

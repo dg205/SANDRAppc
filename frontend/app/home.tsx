@@ -194,8 +194,16 @@ export default function Dashboard() {
   return (
     <ScrollView style={styles.bg} contentContainerStyle={styles.scroll}>
 
-      {/* ── Hero / greeting ── */}
-      <View style={styles.hero}>
+      {/* ── Hero / greeting: tap anywhere on it to see your own profile ── */}
+      <TouchableOpacity
+        style={styles.hero}
+        activeOpacity={0.9}
+        accessibilityRole="button"
+        accessibilityLabel="View my profile"
+        onPress={() =>
+          router.push({ pathname: "/profile/ProfileSummary", params: { from: "dashboard" } })
+        }
+      >
         <View style={styles.heroTop}>
           <Text style={styles.appName}>SANDRAPP</Text>
           <View style={styles.heroActions}>
@@ -220,7 +228,8 @@ export default function Dashboard() {
                 ? `Your top ${matches.length} matches are ready`
                 : "Complete your profile to find matches near you"}
         </Text>
-      </View>
+        <Text style={styles.heroLink}>View my profile ›</Text>
+      </TouchableOpacity>
 
       {/* ── Pending connection requests ── */}
       {pendingRequests.length > 0 && (
@@ -466,6 +475,7 @@ const styles = StyleSheet.create({
   iconBtnRed: { backgroundColor: "rgba(255,80,80,0.25)" },
   iconBtnRedText: { color: "#FFD0D0" },
   greeting: { fontSize: 28, fontWeight: "800", color: "#fff", marginBottom: 4 },
+  heroLink: { fontSize: 14, color: "#fff", fontWeight: "700", marginTop: 10 },
   heroSub: { fontSize: 14, color: "rgba(255,255,255,0.85)", lineHeight: 20 },
 
   sectionTitle: {

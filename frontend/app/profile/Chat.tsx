@@ -17,6 +17,7 @@ import { ChatMessage, Meetup, getMeetup, getMessages, sendMessage } from "../../
 import SafetySheet from "../../components/SafetySheet";
 import MeetupCard from "../../components/MeetupCard";
 import { readAloud, stopReading } from "../../utils/speech";
+import { useKeyboardInset } from "../../utils/keyboard";
 
 const POLL_MS = 5000;
 const MAX_LENGTH = 2000;
@@ -52,6 +53,7 @@ export default function Chat() {
 
   const newestId = useRef(0);
   const scrollRef = useRef<ScrollView>(null);
+  const keyboardInset = useKeyboardInset();
 
   const load = useCallback(async () => {
     if (!connId || !me) {
@@ -120,7 +122,9 @@ export default function Chat() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={[styles.container, Platform.OS === "web" && { paddingBottom: keyboardInset }]}
+    >
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
           <Text style={styles.backText}>← Back</Text>

@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator } fr
 import { router } from "expo-router";
 import LeaveSurveyButton, { markHasProfile } from "../../components/LeaveSurveyButton";
 import { useProfile } from "./profileContext";
-import { authFetch, addUser, getMyProfile, getTopMatches } from "../../utils/api";
+import { authFetch, addUser } from "../../utils/api";
 import { saveItem, SESSION_KEY } from "../../utils/storage";
 
 export default function FinishSurvey() {
@@ -11,10 +11,9 @@ export default function FinishSurvey() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
-  const [fetchingMatches, setFetchingMatches] = useState(false);
-  const [matchesError, setMatchesError] = useState("");
-  // addUser does an unconditional INSERT, so a retry after a failed match
-  // fetch must not register the same person a second time.
+  const [buildingProfile, setBuildingProfile] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  // Don't register the same person twice if a later step is retried.
   const userRegistered = useRef(false);
 
   const handleSubmit = async () => {
@@ -97,12 +96,14 @@ export default function FinishSurvey() {
       setSubmitting(false);
     }
 
-    await fetchAndShowMatches();
+    await buildProfile();
   };
 
-  const fetchAndShowMatches = async () => {
-    setFetchingMatches(true);
-    setMatchesError("");
+  // Saves the profile (the server fills in interests, days etc. from the
+  // spoken answers), then shows it back to the person before any matches.
+  const buildProfile = async () => {
+    setBuildingProfile(true);
+    setProfileError("");
 
     try {
       const targetUser = { ...profile };
@@ -114,11 +115,6 @@ export default function FinishSurvey() {
         markHasProfile();
       }
 
-      // Saving fills in interests, days etc. from the spoken answers, so
-      // match on the saved profile rather than the one held here.
-      const saved = await getMyProfile().catch(() => null);
-      const result = await getTopMatches(saved ?? targetUser, []);
-
       await saveItem(
         SESSION_KEY,
         JSON.stringify({
@@ -129,22 +125,16 @@ export default function FinishSurvey() {
         })
       );
 
-      router.replace({
-        pathname: "/profile/MatchResults",
-        params: {
-          matches: JSON.stringify(result.matches),
-          userName: profile.name ?? "",
-        },
-      });
+      router.replace("/profile/ProfileSummary");
     } catch (err) {
-      setMatchesError(String(err));
+      setProfileError(err instanceof Error ? err.message : String(err));
     } finally {
-      setFetchingMatches(false);
+      setBuildingProfile(false);
     }
   };
 
-  // The dashboard loads matches on its own, so this works even if fetching
-  // them here failed.
+  // The dashboard loads everything on its own, so this works even if the
+  // step above failed.
   const goToDashboard = () => router.replace("/home");
 
   return (
@@ -180,23 +170,23 @@ export default function FinishSurvey() {
         ) : (
           <>
             <Text style={styles.savedText}>Responses saved!</Text>
-            {fetchingMatches && (
+            {buildingProfile && (
               <>
                 <ActivityIndicator color="#4B6FA5" />
-                <Text style={styles.findingText}>Finding your matches...</Text>
+                <Text style={styles.findingText}>Putting your profile together...</Text>
               </>
             )}
-            {matchesError !== "" && (
+            {profileError !== "" && (
               <>
-                <Text style={styles.errorText}>{matchesError}</Text>
-                <TouchableOpacity style={styles.button} onPress={fetchAndShowMatches}>
+                <Text style={styles.errorText}>{profileError}</Text>
+                <TouchableOpacity style={styles.button} onPress={buildProfile}>
                   <Text style={styles.buttonText}>Try Again</Text>
                 </TouchableOpacity>
               </>
             )}
-            {!fetchingMatches && (
+            {!buildingProfile && (
               <TouchableOpacity
-                style={[styles.button, matchesError !== "" && styles.buttonSecondary]}
+                style={[styles.button, profileError !== "" && styles.buttonSecondary]}
                 onPress={goToDashboard}
               >
                 <Text style={styles.buttonText}>Go to Dashboard</Text>

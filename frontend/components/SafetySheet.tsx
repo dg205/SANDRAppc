@@ -15,6 +15,7 @@ import {
   removeConnection,
   reportUser,
 } from "../utils/api";
+import { useKeyboardInset } from "../utils/keyboard";
 
 type Step = "menu" | "remove" | "block" | "report" | "done";
 
@@ -39,6 +40,7 @@ export default function SafetySheet({
   onFinished: () => void;
 }) {
   const person = { id: otherId, name: otherName };
+  const keyboardInset = useKeyboardInset();
   const [step, setStep] = useState<Step>("menu");
   const [reason, setReason] = useState("");
   const [details, setDetails] = useState("");
@@ -82,7 +84,7 @@ export default function SafetySheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
       <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { marginBottom: keyboardInset }]}>
           <ScrollView keyboardShouldPersistTaps="handled">
             {step === "menu" && (
               <>

@@ -15,6 +15,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { sendConnectRequest } from "../../utils/api";
 import { getItem, SESSION_KEY } from "../../utils/storage";
 import { DAYS, TIMES } from "../../utils/schedule";
+import { useKeyboardAwareScroll } from "../../utils/keyboard";
 
 export default function ConnectRequest() {
   const { matchName, matchId, fromUserName } = useLocalSearchParams<{
@@ -30,6 +31,7 @@ export default function ConnectRequest() {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+  const keyboard = useKeyboardAwareScroll();
 
   // The sender's name normally arrives as a param; fall back to the saved session.
   useEffect(() => {
@@ -73,7 +75,8 @@ export default function ConnectRequest() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        {...keyboard.scrollProps}
+        contentContainerStyle={[styles.scroll, { paddingBottom: 48 + keyboard.contentPadding }]}
         keyboardShouldPersistTaps="handled"
       >
         <TouchableOpacity hitSlop={12} onPress={() => router.back()} style={styles.backBtn}>
@@ -130,6 +133,7 @@ export default function ConnectRequest() {
             <Text style={styles.label}>Message (optional)</Text>
             <TextInput
               style={[styles.input, styles.messageInput]}
+              onFocus={keyboard.onInputFocus}
               placeholder={`Say hello to ${matchName ?? "them"}...`}
               placeholderTextColor="#999"
               value={message}

@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { getItem, removeItem, saveItem, SESSION_KEY } from "../utils/storage";
@@ -28,6 +29,7 @@ import {
 import { useAuth } from "../utils/AuthContext";
 import { confirmAction } from "../utils/confirm";
 import { hasNativeModule } from "../utils/nativeModules";
+import { useKeyboardAwareScroll } from "../utils/keyboard";
 import Avatar from "../components/Avatar";
 
 // ── Selectable options ────────────────────────────────────────────────────────
@@ -54,6 +56,7 @@ const TALK_OPTIONS = [
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function EditProfile() {
   const { signOut } = useAuth();
+  const keyboard = useKeyboardAwareScroll();
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
   const [email, setEmail]       = useState("");
@@ -212,9 +215,14 @@ export default function EditProfile() {
         // Backend sync failed — local save is still good
       }
 
-      Alert.alert("Saved!", "Your profile has been updated.", [
-        { text: "OK", onPress: () => router.back() },
-      ]);
+      // Alert does nothing in a browser, so there just go straight back.
+      if (Platform.OS === "web") {
+        router.back();
+      } else {
+        Alert.alert("Saved!", "Your profile has been updated.", [
+          { text: "OK", onPress: () => router.back() },
+        ]);
+      }
     } catch (err: any) {
       Alert.alert("Error", err?.message ?? "Could not save changes.");
     } finally {
@@ -236,7 +244,12 @@ export default function EditProfile() {
     userType === "senior" ? "What I need help with" : "How I can help";
 
   return (
-    <ScrollView style={styles.bg} contentContainerStyle={styles.scroll}>
+    <ScrollView
+      {...keyboard.scrollProps}
+      style={styles.bg}
+      contentContainerStyle={[styles.scroll, { paddingBottom: 48 + keyboard.contentPadding }]}
+      keyboardShouldPersistTaps="handled"
+    >
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity hitSlop={12} onPress={() => router.back()}>
@@ -302,6 +315,7 @@ export default function EditProfile() {
       <View style={styles.section}>
         <Text style={styles.label}>Interests & Hobbies</Text>
         <ChipPicker
+          onInputFocus={keyboard.onInputFocus}
           options={INTEREST_OPTIONS}
           selected={interests}
           onChange={setInterests}
@@ -313,6 +327,7 @@ export default function EditProfile() {
       <View style={styles.section}>
         <Text style={styles.label}>{helpLabel}</Text>
         <ChipPicker
+          onInputFocus={keyboard.onInputFocus}
           options={helpOptions}
           selected={helpWith}
           onChange={setHelpWith}
@@ -324,6 +339,7 @@ export default function EditProfile() {
       <View style={styles.section}>
         <Text style={styles.label}>How I like to connect</Text>
         <ChipPicker
+          onInputFocus={keyboard.onInputFocus}
           options={TALK_OPTIONS}
           selected={talkPrefs}
           onChange={setTalkPrefs}
@@ -393,11 +409,14 @@ function ChipPicker({
   selected,
   onChange,
   placeholder,
+  onInputFocus,
 }: {
   options: string[];
   selected: string[];
   onChange: (next: string[]) => void;
   placeholder: string;
+  // Scrolls the "Other" box above the keyboard when it's tapped.
+  onInputFocus?: (e: any) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
@@ -446,6 +465,7 @@ function ChipPicker({
         <View style={styles.otherRow}>
           <TextInput
             style={[styles.input, styles.otherInput]}
+            onFocus={onInputFocus}
             value={draft}
             onChangeText={setDraft}
             placeholder={placeholder}
