@@ -12,7 +12,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Image,
   Platform,
   StatusBar,
 } from "react-native";
@@ -31,6 +30,7 @@ import {
   normalizeMatches,
 } from "../utils/api";
 import Avatar from "../components/Avatar";
+import AppHeader from "../components/AppHeader";
 import BottomNav from "../components/BottomNav";
 import { markHasProfile } from "../components/LeaveSurveyButton";
 
@@ -172,8 +172,6 @@ export default function Dashboard() {
 
   const goToMessages = () => router.replace("/profile/Requests");
   const goToMatches = () => router.replace("/profile/MatchResults");
-  const goToProfile = () =>
-    router.replace({ pathname: "/profile/ProfileSummary", params: { from: "tab" } });
 
   // The meetup to show: a confirmed one first, otherwise one still being
   // agreed on.
@@ -187,28 +185,7 @@ export default function Dashboard() {
   return (
     <View style={styles.screen}>
       <ScrollView style={styles.bg} contentContainerStyle={styles.scroll}>
-        {/* ── Top bar ── */}
-        <View style={styles.topBar}>
-          <View style={styles.brand}>
-            <Image
-              source={require("../assets/logo-mark.png")}
-              style={styles.brandIcon}
-              accessibilityIgnoresInvertColors
-              accessible={false}
-            />
-            <Text style={styles.brandName} accessibilityRole="header">
-              SANDRAPP
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.profileBtn}
-            onPress={goToProfile}
-            accessibilityRole="button"
-            accessibilityLabel="My profile"
-          >
-            <Ionicons name="person-outline" size={20} color="#2F80ED" />
-          </TouchableOpacity>
-        </View>
+        <AppHeader />
 
         {/* ── Greeting ── */}
         <View style={styles.hero}>
@@ -370,7 +347,7 @@ export default function Dashboard() {
         ) : matches.length === 0 ? (
           <View style={[styles.card, styles.center]}>
             <Text style={styles.emptyText}>
-              No matches yet. Finish your profile and we'll find people near
+              No matches yet. Finish your profile and we&apos;ll find people near
               you who share your interests, values, and culture.
             </Text>
             <TouchableOpacity
@@ -456,25 +433,6 @@ const styles = StyleSheet.create({
   },
   bg: { flex: 1 },
   scroll: { padding: 16, paddingBottom: 24 },
-
-  /* Top bar */
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 14,
-  },
-  brand: { flexDirection: "row", alignItems: "center", gap: 10 },
-  brandIcon: { width: 40, height: 40 },
-  brandName: { fontSize: 20, fontWeight: "800", color: "#1A1A2E", letterSpacing: 1 },
-  profileBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
 
   /* Greeting */
   hero: {
