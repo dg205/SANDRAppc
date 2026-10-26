@@ -216,20 +216,34 @@ def require_auth(f):
         return f(user_id, email, *args, **kwargs)
     return wrapper
 
-def optional_auth_user_id():
-    """The caller's user id if they sent a valid token, else None. For routes
-    that stay open but behave better for a signed-in caller."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return None
-    try:
-        return verify_supabase_jwt(auth_header[7:]).get("sub")
-    except Exception:
-        return None
-
 # People are identified by their candidates.id everywhere (requests,
 # messages, blocks, reports). Names are only for display: two people can
 # share one, and someone can change theirs.
+
+# Hourly caps per account on routes that spend Groq credits. Generous for a
+# real person (the survey has six spoken answers), but they stop one account
+# from running up the bill.
+HOURLY_LIMITS = {
+    "transcribe": int(os.environ.get("TRANSCRIBE_LIMIT_PER_HOUR", 30)),
+    "profile_extract": int(os.environ.get("PROFILE_EXTRACT_LIMIT_PER_HOUR", 10)),
+}
+
+def over_hourly_limit(c, user_id, action):
+    """Whether this account has used up its hourly allowance for action.
+    If not, the call is counted."""
+    c.execute(
+        """SELECT COUNT(*) FROM paid_api_usage
+           WHERE auth_user_id = %s AND action = %s
+             AND created_at > NOW() - INTERVAL '1 hour'""",
+        (user_id, action),
+    )
+    if c.fetchone()[0] >= HOURLY_LIMITS[action]:
+        return True
+    c.execute(
+        "INSERT INTO paid_api_usage (auth_user_id, action) VALUES (%s, %s)",
+        (user_id, action),
+    )
+    return False
 
 def get_caller(c, user_id):
     """(candidate_id, name) for the signed-in user, or (None, None) if they
@@ -512,6 +526,21 @@ def init_db():
         # in the app, so without this anyone could read them over the REST API.
         for table in ("candidates", "survey_responses", "connection_requests", "push_tokens"):
             c.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
+        # One row per call to a paid service (Groq), so each account can be
+        # held to an hourly limit. See over_hourly_limit().
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS paid_api_usage (
+                id SERIAL PRIMARY KEY,
+                auth_user_id UUID NOT NULL,
+                action TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        c.execute("""
+            CREATE INDEX IF NOT EXISTS paid_api_usage_user_action_time_idx
+            ON paid_api_usage (auth_user_id, action, created_at)
+        """)
+        c.execute("ALTER TABLE paid_api_usage ENABLE ROW LEVEL SECURITY")
         c.execute("SELECT COUNT(*) FROM candidates")
         if c.fetchone()[0] == 0:
             for candidate in SEED_CANDIDATES:
@@ -1198,7 +1227,8 @@ def health_check():
     }), 200
 
 @app.route("/api/match", methods=["POST"])
-def calculate_matches():
+@require_auth
+def calculate_matches(user_id, email):
     try:
         data = request.json or {}
         target_user = data.get("targetUser") or data.get("currentUser")
@@ -1218,15 +1248,13 @@ def calculate_matches():
         else:
             candidates = data.get("candidates") or get_all_candidates()
 
-        # A signed-in caller never sees themselves, or anyone on either side
-        # of a block. Signed out, the best we can do is skip their own name.
-        my_id, blocked = None, set()
-        auth_id = optional_auth_user_id()
-        if auth_id:
-            with db_cursor() as (conn, c):
-                my_id, _ = get_caller(c, auth_id)
-                if my_id is not None:
-                    blocked = get_blocked_ids(c, my_id)
+        # The caller never sees themselves, or anyone on either side of a
+        # block. Before their profile exists, skip their own name instead.
+        blocked = set()
+        with db_cursor() as (conn, c):
+            my_id, _ = get_caller(c, user_id)
+            if my_id is not None:
+                blocked = get_blocked_ids(c, my_id)
 
         matches = []
         for candidate in candidates:
@@ -1302,7 +1330,10 @@ def add_user(user_id, email):
             # Which fields came from voice last time is the server's record,
             # not whatever the app sends.
             user_data["fieldsFromVoice"] = existing.get("fieldsFromVoice", [])
-            user_data = fill_missing_fields(user_data)
+            # Over the hourly cap, the profile is still saved, just without
+            # the language-model pass (matching falls back to keywords).
+            if not over_hourly_limit(c, user_id, "profile_extract"):
+                user_data = fill_missing_fields(user_data)
 
             c.execute("""
                 INSERT INTO candidates (name, profile, auth_user_id, email)
@@ -1508,11 +1539,25 @@ def delete_my_account(user_id, email):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Spoken answers are a few minutes at most; this is ~10 minutes of the app's
+# recording quality, and well under Groq's own upload limit.
+MAX_AUDIO_BYTES = 10 * 1024 * 1024
+
 #transcribe route
 @app.route("/api/transcribe", methods=["POST"])
-def transcribe_audio():
+@require_auth
+def transcribe_audio(user_id, email):
     tmp_path = None
     saved_audio_path = None
+
+    # Each call costs Groq credits, so only signed-in accounts, within limits.
+    if (request.content_length or 0) > MAX_AUDIO_BYTES:
+        return jsonify({"error": "Recording is too long"}), 413
+    with db_cursor() as (conn, c):
+        limited = over_hourly_limit(c, user_id, "transcribe")
+        conn.commit()
+    if limited:
+        return jsonify({"error": "Too many recordings in the last hour. Please try again later."}), 429
 
     try:
         print("[transcribe] content-type:", request.content_type)
@@ -2186,10 +2231,10 @@ def report_user(user_id, email):
 @app.route("/api/retrain", methods=["POST"])
 def retrain_endpoint():
     # This is hit by a scheduled job, not a logged-in user, so it checks a
-    # shared secret instead of require_auth. Left open if RETRAIN_SECRET
-    # isn't configured (e.g. local dev).
+    # shared secret instead of require_auth. Without RETRAIN_SECRET set, it
+    # refuses everyone rather than being open.
     secret = os.environ.get("RETRAIN_SECRET", "")
-    if secret and request.headers.get("X-Retrain-Secret", "") != secret:
+    if not secret or request.headers.get("X-Retrain-Secret", "") != secret:
         return jsonify({"error": "Forbidden"}), 403
     try:
         from retrain import retrain_model

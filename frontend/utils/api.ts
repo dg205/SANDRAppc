@@ -59,15 +59,9 @@ export async function getTopMatches(
 ): Promise<{ matches: any[]; total_candidates: number }> {
   console.log("Posting matches to:", `${BASE_URL}/api/match`);
 
-  // Matching works signed out too; signed in, the backend also leaves out
-  // anyone on either side of a block.
-  const token = await ensureFreshToken();
-  const res = await fetch(`${BASE_URL}/api/match`, {
+  const res = await authFetch(`/api/match`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ targetUser, candidates }),
   });
 

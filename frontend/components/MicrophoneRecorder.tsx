@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
-import { BASE_URL } from "../utils/api";
+import { authFetch } from "../utils/api";
 
 type RecorderFinishData = {
   audioUri: string | null;
@@ -44,9 +44,9 @@ export default function MicrophoneRecorder({
   const [confirmed, setConfirmed] = useState(false);
   const [pendingResult, setPendingResult] = useState<RecorderFinishData | null>(null);
 
-  const recognitionRef = useRef<any>(null);
-  const finalTextRef = useRef("");
-  const latestTextRef = useRef("");
+  // Browser recording: the MediaRecorder and the audio it has produced so far.
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   const active = recording !== null || isListening;
 
@@ -70,97 +70,131 @@ export default function MicrophoneRecorder({
   }
 
   function resetStateForNewRecording() {
-    finalTextRef.current = "";
-    latestTextRef.current = "";
     setTranscription("");
     setConfirmed(false);
     setPendingResult(null);
     setSavedAudioUri(null);
   }
 
+  // Sends a recording to the backend, which transcribes it with Groq Whisper
+  // and keeps a copy of the audio in storage.
+  async function transcribe(formData: FormData) {
+    // Signed-in only: each transcription costs Groq credits.
+    const response = await authFetch(`/api/transcribe`, {
+      method: "POST",
+      body: formData,
+    });
+
+    const raw = await response.text();
+    console.log("Transcribe status =", response.status);
+    console.log("Transcribe raw body =", raw);
+
+    if (!response.ok) {
+      throw new Error(`Transcription failed (${response.status}): ${raw}`);
+    }
+
+    const data = JSON.parse(raw);
+    return {
+      text: ((data.text as string) || "").trim(),
+      uploadedAudioPath: (data.saved_audio_path as string) || null,
+    };
+  }
+
   // -----------------------------
   // WEB RECORDING
   // -----------------------------
-  function startWebRecording() {
-    const SR =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  // The browser records the audio and it's transcribed the same way as in
+  // the app, rather than with the browser's own speech recognition, which
+  // differs from browser to browser (and repeats words on Android Chrome).
 
-    if (!SR) {
-      Alert.alert(
-        "Browser Not Supported",
-        "Voice recording requires Chrome or Edge."
-      );
-      return;
+  // Formats browsers can record in, best first. Chrome and Firefox record
+  // WebM or Ogg, Safari records MP4. Whisper accepts all of them.
+  const WEB_AUDIO_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
+
+  async function startWebRecording() {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      window.alert("This browser can't record audio. You can type your answer instead.");
+      return false;
+    }
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      window.alert("Microphone access is needed to record your answer.");
+      return false;
     }
 
     resetStateForNewRecording();
 
-    const recognition = new SR();
-    recognition.interimResults = true;
-    recognition.continuous = true;
-    recognition.lang = "en-US";
-
-    recognition.onresult = (event: any) => {
-      let transcript = "";
-
-      for (let i = 0; i < event.results.length; i++) {
-        transcript += event.results[i][0].transcript;
-      }
-
-      latestTextRef.current = transcript;
-      setTranscription(transcript);
-      setConfirmed(false);
-      onPartialText?.(transcript);
-
-      if (event.results[event.results.length - 1]?.isFinal) {
-        finalTextRef.current = transcript;
-      }
+    const mimeType = WEB_AUDIO_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    chunksRef.current = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunksRef.current.push(e.data);
     };
 
-    recognition.onerror = (event: any) => {
-      if (event.error !== "no-speech" && event.error !== "aborted") {
-        console.warn("SpeechRecognition error:", event.error);
-      }
-    };
-
-    recognition.onend = () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.start();
-        } catch {}
-      }
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
+    mediaRecorderRef.current = recorder;
+    recorder.start();
     setIsListening(true);
+    return true;
   }
 
-  function stopWebRecording() {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
-    }
-
+  async function stopWebRecording() {
+    const recorder = mediaRecorderRef.current;
+    mediaRecorderRef.current = null;
     setIsListening(false);
+    if (!recorder) return;
 
-    const text = (latestTextRef.current || finalTextRef.current || "").trim();
-    const csvContent = buildCsv(text);
+    setIsProcessing(true);
 
-    setTranscription(text);
-    setConfirmed(false);
+    const blob = await new Promise<Blob>((resolve) => {
+      recorder.onstop = () =>
+        resolve(new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" }));
+      recorder.stop();
+    });
+    // Release the microphone so the browser stops showing it as in use.
+    recorder.stream.getTracks().forEach((t) => t.stop());
 
-    const result = {
-      audioUri: null,
-      text,
-      csv: csvContent,
+    const audioUri = URL.createObjectURL(blob);
+    setSavedAudioUri(audioUri);
+
+    let result: RecorderFinishData = {
+      audioUri,
+      text: "",
+      csv: buildCsv(""),
       csvUri: null,
       uploadedAudioPath: null,
     };
+
+    try {
+      if (blob.size > 0) {
+        // The server picks the format from the file extension, so match it.
+        const ext = blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg" : "webm";
+        const formData = new FormData();
+        formData.append("audio", blob, `recording.${ext}`);
+
+        const { text, uploadedAudioPath } = await transcribe(formData);
+        result = { ...result, text, csv: buildCsv(text), uploadedAudioPath };
+        setTranscription(text);
+        onPartialText?.(text);
+      }
+    } catch (err) {
+      console.warn("Transcription/upload error:", err);
+      const overLimit = String(err).includes("(429)");
+      window.alert(
+        overLimit
+          ? "You've recorded a lot in the last hour. Please type your answer, or try again later."
+          : "Your answer couldn't be turned into text. Tap the microphone to try again, or type your answer."
+      );
+    } finally {
+      setIsProcessing(false);
+    }
+
     setPendingResult(result);
-    // Nothing was heard: still tell the screen, so it can ask them to try
+    // Nothing came back: still tell the screen, so it can ask them to try
     // again or type instead. (Results with text are passed on above.)
-    if (!text) onFinish?.(result);
+    if (!result.text) onFinish?.(result);
   }
 
   // -----------------------------
@@ -287,22 +321,7 @@ export default function MicrophoneRecorder({
         } as any
       );
 
-      const response = await fetch(`${BASE_URL}/api/transcribe`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const raw = await response.text();
-      console.log("Transcribe status =", response.status);
-      console.log("Transcribe raw body =", raw);
-
-      if (!response.ok) {
-        throw new Error(`Transcription failed (${response.status}): ${raw}`);
-      }
-
-      const data = JSON.parse(raw);
-      const text = (data.text || "").trim();
-      const uploadedAudioPath = data.saved_audio_path || null;
+      const { text, uploadedAudioPath } = await transcribe(formData);
       const csvContent = buildCsv(text);
 
       setTranscription(text);
@@ -399,11 +418,11 @@ export default function MicrophoneRecorder({
   // -----------------------------
   // HANDLERS
   // -----------------------------
-  function handleStart() {
+  async function handleStart() {
     if (isProcessing || active) return;
 
     if (Platform.OS === "web") {
-      startWebRecording();
+      if (!(await startWebRecording())) return;
     } else {
       startNativeRecording();
     }
@@ -413,7 +432,7 @@ export default function MicrophoneRecorder({
 
   async function handleStop() {
     if (Platform.OS === "web") {
-      stopWebRecording();
+      await stopWebRecording();
     } else {
       await stopNativeRecording();
     }
@@ -481,6 +500,17 @@ export default function MicrophoneRecorder({
       }
     };
   }, [sound]);
+
+  // Leaving the screen mid-recording in a browser: let go of the microphone.
+  useEffect(() => {
+    return () => {
+      const recorder = mediaRecorderRef.current;
+      if (recorder) {
+        mediaRecorderRef.current = null;
+        recorder.stream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
 
   return (
     <View style={styles.container}>
