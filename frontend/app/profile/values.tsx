@@ -25,7 +25,6 @@ import { useProfile } from "./profileContext";
 export default function Values() {
   const { updateProfile } = useProfile();
   const [audioUri, setAudioUri] = useState<string | null>(null);
-  const [csvText, setCsvText] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [transcribedText, setTranscribedText] = useState("");
   const [retryHint, setRetryHint] = useState(false);
@@ -36,7 +35,6 @@ export default function Values() {
   const handleFinish = async ({
     audioUri,
     text,
-    csv,
     uploadedAudioPath,
   }: {
     audioUri: string | null;
@@ -45,7 +43,6 @@ export default function Values() {
     uploadedAudioPath?: string | null;
   }) => {
     setAudioUri(audioUri);
-    setCsvText(csv);
     setTranscribedText(text);
     setRetryHint(needsRetry(text));
     setServerAudioPath(uploadedAudioPath ?? null);
@@ -98,32 +95,6 @@ export default function Values() {
     await FileSystem.writeAsStringAsync(dest, csvContent);
   };
 
-  const downloadWebAudio = async () => {
-    if (!audioUri) return;
-
-    const response = await fetch(audioUri);
-    const blob = await response.blob();
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "values_audio.m4a";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const downloadWebCSV = () => {
-    if (!csvText) return;
-
-    const blob = new Blob([csvText], { type: "text/csv" });
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "values_words.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -239,27 +210,6 @@ export default function Values() {
           </Text>
         </View>
 
-        {Platform.OS === "web" && confirmed && (
-          <View style={styles.webButtonsWrap}>
-            {audioUri && (
-              <TouchableOpacity
-                style={styles.webButton}
-                onPress={downloadWebAudio}
-              >
-                <Text style={styles.webButtonText}>⬇️ Download Audio</Text>
-              </TouchableOpacity>
-            )}
-
-            {csvText !== "" && (
-              <TouchableOpacity
-                style={styles.webButton}
-                onPress={downloadWebCSV}
-              >
-                <Text style={styles.webButtonText}>⬇️ Download CSV</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -477,23 +427,4 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  webButtonsWrap: {
-    marginTop: 20,
-    width: "100%",
-    alignItems: "center",
-  },
-
-  webButton: {
-    backgroundColor: "#4CAF50",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    marginBottom: 10,
-  },
-
-  webButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
 });
