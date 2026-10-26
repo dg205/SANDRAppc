@@ -5,6 +5,8 @@ answers a short survey, mostly by voice. The app then ranks people on the other
 side by how well they fit, and two people who connect can chat and plan a
 meetup.
 
+**Try it in a browser:** https://sandrapp-web.onrender.com
+
 - **Frontend:** React Native app built with Expo (Expo Router, NativeWind, TypeScript)
 - **Backend:** Flask API with a rule-based + machine-learning match score
 - **Services:** Supabase (Postgres, Auth, file storage), Groq (speech-to-text and profile extraction), Render (backend hosting)
@@ -21,42 +23,6 @@ meetup.
 6. **Connect.** A user sends a connect request; the other person accepts or declines it.
 7. **Chat and meetup.** Accepted connections get a chat (polled every 5 seconds) and a meetup card where one person proposes a time and both confirm it.
 8. **Safety.** Users can block, report or remove a connection, upload a profile photo, and delete their account.
-
----
-
-## Matching
-
-Each senior/companion pair gets a rule-based score out of 100, built from these parts:
-
-| Part | Max points |
-|---|---|
-| Interests | 20 |
-| Location | 15 |
-| Help needed vs. help offered | 15 |
-| Availability | 10 |
-| Age gap | 10 |
-| Background (religion, culture, language) | 10 |
-| How they like to talk | 8 |
-| Goals | 7 |
-| Values | 5 |
-
-When a field is missing on either side, that part gets 40% of its points.
-
-A trained model adds a second opinion:
-
-```
-final score = 70% rule score + 30% ML score   (capped at 99)
-```
-
-The model is a scikit-learn RandomForest trained by `backend/retrain.py` on
-`user_match_pairs_expanded_synthetic.csv` plus real accepted and declined
-connect requests, which count three times as much. It retrains:
-
-- every time the backend starts, and
-- daily at 09:00 UTC, through the GitHub Action in `.github/workflows/retrain-schedule.yml`, which calls `POST /api/retrain`.
-
-`backend/eval_matching.py` and `backend/eval_extract.py` are evaluation scripts
-for the matcher and the profile extraction.
 
 ---
 
@@ -159,6 +125,7 @@ Routes marked 🔒 need an `Authorization: Bearer <Supabase access token>` heade
 
 ## Deployment
 
+- **Web app:** Render static site at https://sandrapp-web.onrender.com, serving the Expo web build. It's built from `frontend/` with `npx expo export --platform web`, publishes `frontend/dist`, and rewrites all paths to `/index.html` so links like `/login` load directly. The `EXPO_PUBLIC_*` variables are set on the static site in Render, because they're baked into the build.
 - **Backend:** Render service `sandrappc-backend` (`backend/render.yaml`), deployed from the `master` branch and run with gunicorn. It's on the free tier, so it sleeps when idle and the first request after that can take about 50 seconds.
 - **Database and storage:** Supabase. Survey audio is stored in the public `survey-audio` bucket.
 - **Daily retrain:** needs a `RETRAIN_SECRET` repository secret in GitHub that matches the backend's `RETRAIN_SECRET`.
