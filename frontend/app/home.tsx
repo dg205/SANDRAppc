@@ -12,6 +12,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Image,
   Platform,
   StatusBar,
 } from "react-native";
@@ -189,11 +190,14 @@ export default function Dashboard() {
         {/* ── Top bar ── */}
         <View style={styles.topBar}>
           <View style={styles.brand}>
-            <View style={styles.brandIcon}>
-              <Ionicons name="people" size={18} color="#fff" />
-            </View>
+            <Image
+              source={require("../assets/logo-mark.png")}
+              style={styles.brandIcon}
+              accessibilityIgnoresInvertColors
+              accessible={false}
+            />
             <Text style={styles.brandName} accessibilityRole="header">
-              SandrApp
+              SANDRAPP
             </Text>
           </View>
           <TouchableOpacity
@@ -461,15 +465,8 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   brand: { flexDirection: "row", alignItems: "center", gap: 10 },
-  brandIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: "#2F80ED",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  brandName: { fontSize: 20, fontWeight: "800", color: "#1A1A2E" },
+  brandIcon: { width: 40, height: 40 },
+  brandName: { fontSize: 20, fontWeight: "800", color: "#1A1A2E", letterSpacing: 1 },
   profileBtn: {
     width: 44,
     height: 44,
