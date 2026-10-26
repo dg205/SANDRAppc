@@ -1,7 +1,8 @@
 /**
  * home.tsx — Dashboard
- * Greets the user by name and shows their connections and top matches.
- * Provides Logout and Edit Profile actions.
+ * Greets the user, then shows what needs their attention (requests), their
+ * connections, their next meetup and two recommended matches. The other
+ * screens are a tap away in the bottom bar.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -10,40 +11,42 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Alert,
-  Platform,
   ActivityIndicator,
+  Platform,
+  StatusBar,
 } from "react-native";
 import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
-import { getItem, removeItem, SESSION_KEY } from "../utils/storage";
+import { Ionicons } from "@expo/vector-icons";
+import { getItem, SESSION_KEY } from "../utils/storage";
 import {
   ConnectionRequest,
   Match,
   describeMeetup,
   getConnectRequests,
   otherPerson,
-  matchReason,
+  matchHighlight,
   relationWith,
-  getMyProfile,
-  getTopMatches,
+  loadMyMatches,
   normalizeMatches,
-  respondToConnectRequest,
 } from "../utils/api";
-import { useAuth } from "../utils/AuthContext";
 import Avatar from "../components/Avatar";
+import BottomNav from "../components/BottomNav";
 import { markHasProfile } from "../components/LeaveSurveyButton";
 
+// Home keeps to the best two; the Matches tab has the rest.
+const HOME_MATCH_COUNT = 2;
+const HOME_CONNECTION_COUNT = 3;
+
 // Shown on a match card when you already have something going with them.
-const RELATION_BADGES: Record<string, { label: string; color: string } | undefined> = {
-  connected: { label: "✓ Connected", color: "#27AE60" },
-  sent: { label: "Request sent", color: "#F39C12" },
-  received: { label: "Wants to connect with you", color: "#2F80ED" },
+const RELATION_BADGES: Record<string, string | undefined> = {
+  connected: "Connected",
+  sent: "Request sent",
+  received: "Wants to connect",
 };
 
 export default function Dashboard() {
   const { matches: matchesParam, userName: paramName } =
     useLocalSearchParams<{ matches?: string; userName?: string }>();
-  const { signOut } = useAuth();
 
   const [displayName, setDisplayName] = useState<string>(
     paramName && paramName.trim() ? paramName.trim() : ""
@@ -51,6 +54,7 @@ export default function Dashboard() {
   const [pendingRequests, setPendingRequests] = useState<ConnectionRequest[]>([]);
   const [connections, setConnections] = useState<ConnectionRequest[]>([]);
   const [allRequests, setAllRequests] = useState<ConnectionRequest[]>([]);
+  const [requestsError, setRequestsError] = useState("");
 
   const [matches, setMatches] = useState<Match[]>(() => {
     try {
@@ -71,17 +75,14 @@ export default function Dashboard() {
       setMatchesError("");
     }
     try {
-      const profile = await getMyProfile();
-      if (!profile) {
-        setMatches([]);
-        return;
+      const { profile, matches: found } = await loadMyMatches();
+      if (profile) {
+        markHasProfile();
+        if (profile.name) setDisplayName((prev) => prev || profile.name);
       }
-      markHasProfile();
-      if (profile.name) setDisplayName((prev) => prev || profile.name);
-      const result = await getTopMatches(profile, []);
-      setMatches(normalizeMatches(result.matches));
+      setMatches(found);
     } catch {
-      if (!quiet) setMatchesError("We couldn't load your matches right now.");
+      if (!quiet) setMatchesError("We couldn't load your matches. Check your connection and try again.");
     } finally {
       if (!quiet) setLoadingMatches(false);
     }
@@ -125,12 +126,15 @@ export default function Dashboard() {
     if (!me) return;
     try {
       const requests = await getConnectRequests(me, "all");
+      setRequestsError("");
       setAllRequests(requests);
       setConnections(requests.filter((r) => r.status === "accepted"));
       setPendingRequests(
         requests.filter((r) => !(r.sent_by_me ?? r.from_user_name === me) && r.status === "pending")
       );
-    } catch {}
+    } catch {
+      setRequestsError("We couldn't load your requests and connections.");
+    }
   }, [me]);
 
   // Reload whenever the dashboard comes back into view, so a request accepted
@@ -140,13 +144,6 @@ export default function Dashboard() {
       loadRequests();
     }, [loadRequests])
   );
-
-  const respondToRequest = async (id: number, status: "accepted" | "rejected") => {
-    try {
-      await respondToConnectRequest(id, status);
-      await loadRequests();
-    } catch {}
-  };
 
   const openChat = (c: ConnectionRequest) => {
     const other = otherPerson(c, me);
@@ -161,470 +158,446 @@ export default function Dashboard() {
     });
   };
 
+  const openMatch = (m: Match, i: number) =>
+    router.push({
+      pathname: "/profile/MatchProfile",
+      params: {
+        match: JSON.stringify(m),
+        matchIndex: String(i),
+        matches: JSON.stringify(matches),
+        userName: me,
+      },
+    });
+
+  const goToMessages = () => router.replace("/profile/Requests");
+  const goToMatches = () => router.replace("/profile/MatchResults");
+  const goToProfile = () =>
+    router.replace({ pathname: "/profile/ProfileSummary", params: { from: "tab" } });
+
+  // The meetup to show: a confirmed one first, otherwise one still being
+  // agreed on.
+  const withMeetup = connections.filter((c) => c.meetup);
+  const nextMeetup =
+    withMeetup.find((c) => c.meetup?.status === "confirmed") ?? withMeetup[0];
+
   const name = displayName || "Friend";
-
-  const handleLogout = async () => {
-    let confirmed = false;
-    if (Platform.OS === "web") {
-      confirmed = (window as any).confirm("Are you sure you want to log out?");
-    } else {
-      confirmed = await new Promise<boolean>((resolve) => {
-        Alert.alert("Log Out", "Are you sure you want to log out?", [
-          { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-          { text: "Log Out", style: "destructive", onPress: () => resolve(true) },
-        ]);
-      });
-    }
-    if (confirmed) {
-      await removeItem(SESSION_KEY);
-      await signOut();
-      router.replace("/welcome");
-    }
-  };
-
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return "#27AE60";
-    if (score >= 60) return "#F39C12";
-    return "#E74C3C";
-  };
-
-  const cap = (str: string) =>
-    str ? str.charAt(0).toUpperCase() + str.slice(1) : "";
+  const pendingCount = pendingRequests.length;
 
   return (
-    <ScrollView style={styles.bg} contentContainerStyle={styles.scroll}>
+    <View style={styles.screen}>
+      <ScrollView style={styles.bg} contentContainerStyle={styles.scroll}>
+        {/* ── Top bar ── */}
+        <View style={styles.topBar}>
+          <View style={styles.brand}>
+            <View style={styles.brandIcon}>
+              <Ionicons name="people" size={18} color="#fff" />
+            </View>
+            <Text style={styles.brandName} accessibilityRole="header">
+              SandrApp
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.profileBtn}
+            onPress={goToProfile}
+            accessibilityRole="button"
+            accessibilityLabel="My profile"
+          >
+            <Ionicons name="person-outline" size={20} color="#2F80ED" />
+          </TouchableOpacity>
+        </View>
 
-      {/* ── Hero / greeting: tap anywhere on it to see your own profile ── */}
-      <TouchableOpacity
-        style={styles.hero}
-        activeOpacity={0.9}
-        accessibilityRole="button"
-        accessibilityLabel="View my profile"
-        onPress={() =>
-          router.push({ pathname: "/profile/ProfileSummary", params: { from: "dashboard" } })
-        }
-      >
-        <View style={styles.heroTop}>
-          <Text style={styles.appName}>SANDRAPP</Text>
-          <View style={styles.heroActions}>
+        {/* ── Greeting ── */}
+        <View style={styles.hero}>
+          <Text style={styles.heroEyebrow}>WELCOME BACK</Text>
+          <Text style={styles.greeting} accessibilityRole="header">
+            Hello, {name}!
+          </Text>
+          <Text style={styles.heroSub}>
+            Your next meaningful connection could be just a hello away.
+          </Text>
+        </View>
+
+        {requestsError !== "" && (
+          <View style={styles.errorBanner} accessibilityRole="alert">
+            <Ionicons name="alert-circle-outline" size={20} color="#B42318" />
+            <Text style={styles.errorBannerText}>{requestsError}</Text>
             <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => router.push("/editProfile")}
+              onPress={loadRequests}
+              accessibilityRole="button"
+              accessibilityLabel="Try loading requests again"
+              hitSlop={10}
             >
-              <Text style={styles.iconBtnText}>Edit</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.iconBtn, styles.iconBtnRed]} onPress={handleLogout}>
-              <Text style={[styles.iconBtnText, styles.iconBtnRedText]}>Log Out</Text>
+              <Text style={styles.errorBannerAction}>Try again</Text>
             </TouchableOpacity>
           </View>
-        </View>
-        <Text style={styles.greeting}>Hello, {name}!</Text>
-        <Text style={styles.heroSub}>
-          {loadingMatches
-            ? "Finding your matches…"
-            : matches.length === 1
-              ? "Your top match is ready"
-              : matches.length > 1
-                ? `Your top ${matches.length} matches are ready`
-                : "Complete your profile to find matches near you"}
-        </Text>
-        <Text style={styles.heroLink}>View my profile ›</Text>
-      </TouchableOpacity>
+        )}
 
-      {/* ── Pending connection requests ── */}
-      {pendingRequests.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>Pending Requests</Text>
-          {pendingRequests.map((req) => (
-            <View key={req.id} style={styles.requestCard}>
-              <View style={styles.requestIdentity}>
-                <Avatar name={req.from_user_name} photoUrl={req.from_user_photo} size={40} />
-                <Text style={styles.requestFrom}>{req.from_user_name}</Text>
-              </View>
-              <Text style={styles.requestDetail}>
-                {req.proposed_day} · {req.proposed_time}
-              </Text>
-              {!!req.message && (
-                <Text style={styles.requestMessage}>"{req.message}"</Text>
-              )}
-              <View style={styles.requestActions}>
-                <TouchableOpacity
-                  style={styles.acceptBtn}
-                  onPress={() => respondToRequest(req.id, "accepted")}
-                >
-                  <Text style={styles.acceptText}>Accept</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.declineBtn}
-                  onPress={() => respondToRequest(req.id, "rejected")}
-                >
-                  <Text style={styles.declineText}>Decline</Text>
-                </TouchableOpacity>
-              </View>
+        {/* ── Requests waiting for an answer ── */}
+        {pendingCount > 0 && (
+          <View style={styles.card}>
+            <View style={styles.cardTitleRow}>
+              <Ionicons name="notifications-outline" size={20} color="#1A1A2E" />
+              <Text style={styles.cardTitle}>Needs Your Attention</Text>
             </View>
-          ))}
-          <View style={styles.sectionGap} />
-        </>
-      )}
-
-      {/* ── Connections ── */}
-      {connections.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>Your Connections</Text>
-          {connections.map((c) => {
-            const other = otherPerson(c, me);
-            return (
-              <TouchableOpacity
-                key={c.id}
-                activeOpacity={0.85}
-                style={styles.connectionCard}
-                onPress={() => openChat(c)}
-              >
-                <View style={styles.avatar}>
-                  <Avatar
-                    name={other.name}
-                    photoUrl={other.photo}
-                  />
-                </View>
-                <View style={styles.connectionInfo}>
-                  <Text style={styles.connectionName}>{other.name}</Text>
-                  <Text style={styles.connectionDetail}>
-                    {c.meetup
-                      ? `${c.meetup.status === "confirmed" ? "✓ " : ""}${describeMeetup(c.meetup)}`
-                      : `${c.proposed_day} · ${c.proposed_time}`}
-                  </Text>
-                </View>
-                <View style={styles.chatPill}>
-                  <Text style={styles.chatPillText}>Chat</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-          <View style={styles.sectionGap} />
-        </>
-      )}
-
-      {loadingMatches ? (
-        <View style={styles.emptyCard}>
-          <ActivityIndicator size="large" color="#2F80ED" />
-          <Text style={[styles.emptyText, styles.loadingText]}>
-            Loading your matches…
-          </Text>
-        </View>
-      ) : matchesError ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyText}>{matchesError}</Text>
-          <TouchableOpacity style={styles.createBtn} onPress={() => loadMatches()}>
-            <Text style={styles.createBtnText}>Try Again</Text>
-          </TouchableOpacity>
-        </View>
-      ) : matches.length === 0 ? (
-        /* ── Empty state ── */
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyText}>
-            No matches yet. Finish your profile and we'll find people near
-            you who share your interests, values, and culture.
-          </Text>
-          <TouchableOpacity
-            style={styles.createBtn}
-            onPress={() => router.push("/survey")}
-          >
-            <Text style={styles.createBtnText}>Create Profile</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <>
-          {/* ── Match cards ── */}
-          <Text style={styles.sectionTitle}>Your Top Matches</Text>
-
-          {matches.map((m, i) => {
-            const relation = relationWith(allRequests, m.id);
-            const badge = RELATION_BADGES[relation.status];
-            return (
-            <TouchableOpacity
-              key={i}
-              activeOpacity={0.85}
-              style={styles.matchCard}
-              onPress={() =>
-                router.push({
-                  pathname: "/profile/MatchProfile",
-                  params: {
-                    match: JSON.stringify(m),
-                    matchIndex: String(i),
-                    matches: JSON.stringify(matches),
-                    userName: me,
-                  },
-                })
-              }
-            >
-              <View style={styles.matchHeader}>
-                <View style={styles.matchIdentity}>
-                  <Avatar name={m.name} photoUrl={m.photoUrl} size={48} />
-                  <Text style={styles.matchName}>{m.name}</Text>
-                </View>
-                <View
-                  style={[
-                    styles.scoreBadge,
-                    { backgroundColor: getScoreColor(m.score) },
-                  ]}
-                >
-                  <Text style={styles.scoreText}>{m.score}%</Text>
-                </View>
-              </View>
-
-              {badge && (
-                <View style={[styles.relationBadge, { backgroundColor: badge.color }]}>
-                  <Text style={styles.relationText}>{badge.label}</Text>
-                </View>
-              )}
-
-              {!!matchReason(m) && (
-                <Text style={styles.matchReason}>{matchReason(m)}</Text>
-              )}
-
-              <Text style={styles.matchDetail}>Age: {m.age}</Text>
-              <Text style={styles.matchDetail}>
-                {m.location ? cap(m.location) : ""}
-              </Text>
-
-              {m.userType && (
-                <Text style={styles.matchType}>
-                  {m.userType === "senior" ? "Older Adult" : "Young Companion"}
+            <Text style={styles.cardSub}>
+              {pendingCount === 1
+                ? "1 person wants to connect with you."
+                : `${pendingCount} people want to connect with you.`}
+            </Text>
+            {pendingRequests.slice(0, 2).map((req) => (
+              <View key={req.id} style={styles.requestRow}>
+                <Text style={styles.requestText} numberOfLines={1}>
+                  {req.from_user_name} sent a request
                 </Text>
-              )}
-
-              <View style={styles.scoreBar}>
-                <View
-                  style={[
-                    styles.scoreBarFill,
-                    {
-                      width: `${m.score}%` as any,
-                      backgroundColor: getScoreColor(m.score),
-                    },
-                  ]}
-                />
+                <TouchableOpacity
+                  style={styles.smallBtn}
+                  onPress={goToMessages}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Review request from ${req.from_user_name}`}
+                >
+                  <Text style={styles.smallBtnText}>Review</Text>
+                </TouchableOpacity>
               </View>
+            ))}
+            {pendingCount > 2 && (
+              <TouchableOpacity onPress={goToMessages} accessibilityRole="link">
+                <Text style={styles.link}>See all {pendingCount} requests</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* ── Connections ── */}
+        {connections.length > 0 && (
+          <>
+            <SectionHeader title="Your Connections" action="See All" onAction={goToMessages} />
+            {connections.slice(0, HOME_CONNECTION_COUNT).map((c) => {
+              const other = otherPerson(c, me);
+              return (
+                <View key={c.id} style={[styles.card, styles.personRow]}>
+                  <Avatar name={other.name} photoUrl={other.photo} size={48} />
+                  <View style={styles.personInfo}>
+                    <Text style={styles.personName}>{other.name}</Text>
+                    <Text style={styles.personDetail}>Connected</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.smallBtn}
+                    onPress={() => openChat(c)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Chat with ${other.name}`}
+                  >
+                    <Text style={styles.smallBtnText}>Chat</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </>
+        )}
+
+        {/* ── Next meetup ── */}
+        <View style={styles.card}>
+          <View style={styles.cardTitleRow}>
+            <Ionicons name="calendar-outline" size={20} color="#1A1A2E" />
+            <Text style={styles.cardTitle}>Upcoming Meetup</Text>
+          </View>
+          {nextMeetup?.meetup ? (
+            <>
+              <Text style={styles.meetupWith}>
+                With {otherPerson(nextMeetup, me).name}
+              </Text>
+              <Text style={styles.cardSub}>{describeMeetup(nextMeetup.meetup)}</Text>
+              <Text
+                style={[
+                  styles.meetupStatus,
+                  nextMeetup.meetup.status === "confirmed" && styles.meetupConfirmed,
+                ]}
+              >
+                {nextMeetup.meetup.status === "confirmed"
+                  ? "✓ Confirmed by both of you"
+                  : nextMeetup.meetup.updated_by_me
+                    ? `Waiting for ${otherPerson(nextMeetup, me).name} to confirm`
+                    : "Waiting for you to confirm"}
+              </Text>
+              <TouchableOpacity onPress={() => openChat(nextMeetup)} accessibilityRole="link">
+                <Text style={styles.link}>Open chat to change or confirm</Text>
+              </TouchableOpacity>
+            </>
+          ) : connections.length > 0 ? (
+            <>
+              <Text style={styles.cardSub}>No upcoming meetups scheduled.</Text>
+              <TouchableOpacity onPress={() => openChat(connections[0])} accessibilityRole="link">
+                <Text style={styles.link}>Plan a meetup with a connection</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text style={styles.cardSub}>
+                No upcoming meetups yet. Connect with a match to plan one.
+              </Text>
+              <TouchableOpacity onPress={goToMatches} accessibilityRole="link">
+                <Text style={styles.link}>Browse your matches</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+
+        {/* ── Recommended matches ── */}
+        <SectionHeader
+          title="Recommended for You"
+          action={matches.length > HOME_MATCH_COUNT ? "View All" : undefined}
+          onAction={goToMatches}
+        />
+        {loadingMatches ? (
+          <View style={[styles.card, styles.center]}>
+            <ActivityIndicator size="large" color="#2F80ED" />
+            <Text style={[styles.cardSub, styles.loadingText]}>Finding your matches…</Text>
+          </View>
+        ) : matchesError ? (
+          <View style={[styles.card, styles.center]} accessibilityRole="alert">
+            <Text style={styles.emptyText}>{matchesError}</Text>
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={() => loadMatches()}
+              accessibilityRole="button"
+            >
+              <Text style={styles.primaryBtnText}>Try Again</Text>
             </TouchableOpacity>
+          </View>
+        ) : matches.length === 0 ? (
+          <View style={[styles.card, styles.center]}>
+            <Text style={styles.emptyText}>
+              No matches yet. Finish your profile and we'll find people near
+              you who share your interests, values, and culture.
+            </Text>
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={() => router.push("/survey")}
+              accessibilityRole="button"
+            >
+              <Text style={styles.primaryBtnText}>Create Profile</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          matches.slice(0, HOME_MATCH_COUNT).map((m, i) => {
+            const badge = RELATION_BADGES[relationWith(allRequests, m.id).status];
+            const highlight = matchHighlight(m);
+            return (
+              <View key={m.id ?? i} style={styles.card}>
+                <View style={styles.personRow}>
+                  <Avatar name={m.name} photoUrl={m.photoUrl} size={48} />
+                  <View style={styles.personInfo}>
+                    <Text style={styles.personName}>{m.name}</Text>
+                    {!!m.age && <Text style={styles.personDetail}>Age {m.age}</Text>}
+                  </View>
+                  <View
+                    style={styles.scorePill}
+                    accessibilityLabel={`${m.score} percent match`}
+                  >
+                    <Text style={styles.scoreText}>{m.score}% match</Text>
+                  </View>
+                </View>
+                {!!badge && <Text style={styles.relation}>{badge}</Text>}
+                {!!highlight && <Text style={styles.highlight}>{highlight}</Text>}
+                <TouchableOpacity
+                  style={styles.outlineBtn}
+                  onPress={() => openMatch(m, i)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View ${m.name}'s profile`}
+                >
+                  <Text style={styles.outlineBtnText}>View Profile</Text>
+                </TouchableOpacity>
+              </View>
             );
-          })}
-        </>
+          })
+        )}
+      </ScrollView>
+      <BottomNav active="home" />
+    </View>
+  );
+}
+
+function SectionHeader({
+  title,
+  action,
+  onAction,
+}: {
+  title: string;
+  action?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle} accessibilityRole="header">
+        {title}
+      </Text>
+      {!!action && (
+        <TouchableOpacity
+          onPress={onAction}
+          hitSlop={12}
+          accessibilityRole="link"
+          accessibilityLabel={`${action}: ${title}`}
+        >
+          <Text style={styles.sectionAction}>{action}</Text>
+        </TouchableOpacity>
       )}
-
-      {/* ── Footer actions ── */}
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.requestsBtn}
-          onPress={() =>
-            router.push({
-              pathname: "/profile/Requests",
-              params: { userName: displayName },
-            })
-          }
-        >
-          <Text style={styles.requestsText}>My Requests</Text>
-        </TouchableOpacity>
-
-        {/* Edit and Log Out live in the header card at the top. */}
-        <TouchableOpacity
-          style={styles.newProfileBtn}
-          onPress={() => router.push("/survey")}
-        >
-          <Text style={styles.newProfileText}>Retake Survey</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bg: { flex: 1, backgroundColor: "#EAF3FF" },
-  scroll: { padding: 20, paddingBottom: 48 },
-
-  /* Hero */
-  hero: {
-    backgroundColor: "#2F80ED",
-    borderRadius: 20,
-    padding: 22,
-    marginBottom: 24,
-    shadowColor: "#2F80ED",
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+  screen: {
+    flex: 1,
+    backgroundColor: "#EAF3FF",
+    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 0,
   },
-  heroTop: {
+  bg: { flex: 1 },
+  scroll: { padding: 16, paddingBottom: 24 },
+
+  /* Top bar */
+  topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 14,
   },
-  appName: {
+  brand: { flexDirection: "row", alignItems: "center", gap: 10 },
+  brandIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "#2F80ED",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  brandName: { fontSize: 20, fontWeight: "800", color: "#1A1A2E" },
+  profileBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  /* Greeting */
+  hero: {
+    backgroundColor: "#2F80ED",
+    borderRadius: 18,
+    padding: 20,
+    marginBottom: 14,
+  },
+  heroEyebrow: {
     fontSize: 12,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.65)",
-    letterSpacing: 2,
+    color: "rgba(255,255,255,0.8)",
+    letterSpacing: 1,
+    marginBottom: 6,
   },
-  heroActions: { flexDirection: "row", gap: 8 },
-  iconBtn: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  iconBtnText: { fontSize: 13, color: "#fff", fontWeight: "600" },
-  iconBtnRed: { backgroundColor: "rgba(255,80,80,0.25)" },
-  iconBtnRedText: { color: "#FFD0D0" },
-  greeting: { fontSize: 28, fontWeight: "800", color: "#fff", marginBottom: 4 },
-  heroLink: { fontSize: 14, color: "#fff", fontWeight: "700", marginTop: 10 },
-  heroSub: { fontSize: 14, color: "rgba(255,255,255,0.85)", lineHeight: 20 },
+  greeting: { fontSize: 28, fontWeight: "800", color: "#fff", marginBottom: 6 },
+  heroSub: { fontSize: 16, color: "#fff", lineHeight: 22 },
 
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1A1A2E",
-    marginBottom: 12,
-  },
-
-  /* Connections */
-  connectionCard: {
+  /* Error banner */
+  errorBanner: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FEF3F2",
+    borderColor: "#FDA29B",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+  },
+  errorBannerText: { flex: 1, fontSize: 15, color: "#B42318" },
+  errorBannerAction: { fontSize: 15, fontWeight: "700", color: "#B42318" },
+
+  /* Cards */
+  card: {
     backgroundColor: "#fff",
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: "#27AE60",
     shadowColor: "#000",
-    shadowOpacity: 0.07,
+    shadowOpacity: 0.06,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 2,
   },
-  avatar: { marginRight: 14 },
-  connectionInfo: { flex: 1 },
-  connectionName: { fontSize: 18, fontWeight: "700", color: "#1A1A2E" },
-  connectionDetail: { fontSize: 14, color: "#555", marginTop: 2 },
-  chatPill: {
-    backgroundColor: "#2F80ED",
-    borderRadius: 20,
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    marginLeft: 10,
-  },
-  chatPillText: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  sectionGap: { height: 12 },
+  center: { alignItems: "center" },
+  cardTitleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
+  cardTitle: { fontSize: 18, fontWeight: "700", color: "#1A1A2E" },
+  cardSub: { fontSize: 15, color: "#4B5563", lineHeight: 21 },
+  link: { fontSize: 15, fontWeight: "700", color: "#2F80ED", marginTop: 10 },
 
-  /* Match card */
-  matchCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 3,
+  requestRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 10,
+    gap: 10,
   },
-  matchHeader: {
+  requestText: { flex: 1, fontSize: 16, fontWeight: "600", color: "#1A1A2E" },
+
+  smallBtn: {
+    backgroundColor: "#2F80ED",
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  smallBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+
+  /* Section headers */
+  sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  matchIdentity: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
-  matchName: { fontSize: 22, fontWeight: "700", color: "#1A1A2E", flexShrink: 1 },
-  scoreBadge: { borderRadius: 20, paddingVertical: 4, paddingHorizontal: 12 },
-  scoreText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  matchDetail: { fontSize: 15, color: "#444", marginBottom: 4 },
-  matchType: { fontSize: 13, color: "#2F80ED", marginBottom: 10, fontWeight: "600" },
-  relationBadge: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    marginBottom: 10,
-  },
-  relationText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  matchReason: { fontSize: 15, color: "#1A1A2E", fontStyle: "italic", marginBottom: 8, lineHeight: 21 },
-  scoreBar: {
-    height: 8,
-    backgroundColor: "#DDE3ED",
-    borderRadius: 999,
-    overflow: "hidden",
     marginTop: 8,
+    marginBottom: 10,
   },
-  scoreBarFill: { height: "100%", borderRadius: 999 },
+  sectionTitle: { fontSize: 19, fontWeight: "700", color: "#1A1A2E" },
+  sectionAction: { fontSize: 15, fontWeight: "700", color: "#2F80ED" },
 
-  /* Empty */
-  emptyCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 28,
-    alignItems: "center",
-    marginBottom: 20,
+  /* People (connections and matches) */
+  personRow: { flexDirection: "row", alignItems: "center" },
+  personInfo: { flex: 1, marginLeft: 12 },
+  personName: { fontSize: 18, fontWeight: "700", color: "#1A1A2E" },
+  personDetail: { fontSize: 14, color: "#4B5563", marginTop: 2 },
+
+  /* Meetup */
+  meetupWith: { fontSize: 16, fontWeight: "700", color: "#1A1A2E", marginBottom: 2 },
+  meetupStatus: { fontSize: 14, color: "#B54708", marginTop: 6, fontWeight: "600" },
+  meetupConfirmed: { color: "#067647" },
+
+  /* Match cards */
+  scorePill: {
+    backgroundColor: "#EAF3FF",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  emptyText: { fontSize: 16, color: "#555", textAlign: "center", marginBottom: 18, lineHeight: 24 },
-  loadingText: { marginTop: 12, marginBottom: 0 },
-  createBtn: {
+  scoreText: { color: "#1D5FBF", fontSize: 13, fontWeight: "700" },
+  relation: { fontSize: 14, color: "#067647", fontWeight: "700", marginTop: 10 },
+  highlight: { fontSize: 15, color: "#374151", marginTop: 10, lineHeight: 21 },
+  outlineBtn: {
+    marginTop: 12,
+    borderWidth: 1.5,
+    borderColor: "#2F80ED",
+    borderRadius: 12,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  outlineBtnText: { color: "#2F80ED", fontSize: 16, fontWeight: "700" },
+
+  /* Empty / loading / error */
+  emptyText: { fontSize: 16, color: "#4B5563", textAlign: "center", marginBottom: 16, lineHeight: 24 },
+  loadingText: { marginTop: 12 },
+  primaryBtn: {
     backgroundColor: "#2F80ED",
-    borderRadius: 10,
-    paddingVertical: 12,
+    borderRadius: 12,
+    minHeight: 46,
     paddingHorizontal: 28,
+    justifyContent: "center",
   },
-  createBtnText: { color: "#fff", fontWeight: "600", fontSize: 16 },
-
-  /* Pending requests */
-  requestCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: "#F39C12",
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  requestIdentity: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 },
-  requestFrom: { fontSize: 18, fontWeight: "700", color: "#1A1A2E" },
-  requestDetail: { fontSize: 14, color: "#555", marginBottom: 4 },
-  requestMessage: { fontSize: 14, color: "#777", fontStyle: "italic", marginBottom: 10 },
-  requestActions: { flexDirection: "row", gap: 10 },
-  acceptBtn: {
-    flex: 1,
-    backgroundColor: "#27AE60",
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  acceptText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  declineBtn: {
-    flex: 1,
-    backgroundColor: "#FFF0F0",
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#FFAAAA",
-  },
-  declineText: { color: "#E74C3C", fontWeight: "600", fontSize: 15 },
-
-  /* Footer actions */
-  footer: { marginTop: 24, gap: 10 },
-  requestsBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    backgroundColor: "#2F80ED",
-    alignItems: "center",
-  },
-  requestsText: { color: "#fff", fontSize: 16, fontWeight: "700" },
-  newProfileBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: "#AAC4F0",
-    alignItems: "center",
-  },
-  newProfileText: { color: "#2F80ED", fontSize: 16, fontWeight: "500" },
+  primaryBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
 });

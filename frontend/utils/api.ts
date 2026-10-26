@@ -132,8 +132,31 @@ export function matchReason(m: Match): string {
   return `You ${reasons.slice(0, 2).join(" and ")}.`;
 }
 
+// A short line for a match card: "Shared interests: Music and walking",
+// falling back to the general reason when no interests overlap.
+export function matchHighlight(m: Match): string {
+  const shared = m.features?.shared_interests;
+  if (Array.isArray(shared) && shared.length) {
+    const words = shared.filter((x): x is string => typeof x === "string").slice(0, 2);
+    return `Shared interests: ${cap(joinWords(words))}`;
+  }
+  return matchReason(m);
+}
+
 function cap(s: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// The signed-in user's profile and their matches, best first. profile is
+// null (and matches empty) if they haven't made one yet.
+export async function loadMyMatches(): Promise<{
+  profile: Record<string, any> | null;
+  matches: Match[];
+}> {
+  const profile = await getMyProfile();
+  if (!profile) return { profile: null, matches: [] };
+  const result = await getTopMatches(profile, []);
+  return { profile, matches: normalizeMatches(result.matches) };
 }
 
 // The signed-in user's saved profile, or null if they haven't made one yet.

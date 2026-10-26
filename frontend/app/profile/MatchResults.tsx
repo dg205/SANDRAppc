@@ -1,24 +1,45 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
+  ActivityIndicator,
+  Platform,
+  StatusBar,
 } from "react-native";
-import { useLocalSearchParams, router } from "expo-router";
-import { Match, matchReason, normalizeMatches } from "../../utils/api";
+import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
+import { Match, matchReason, loadMyMatches } from "../../utils/api";
+import BottomNav from "../../components/BottomNav";
 
+// The Matches tab: everyone the matcher suggests, best first.
 export default function MatchResults() {
-  const { matches: matchesParam, userName } = useLocalSearchParams<{
-    matches: string;
-    userName?: string;
-  }>();
+  const { userName: paramName } = useLocalSearchParams<{ userName?: string }>();
 
-  const allMatches: Match[] = useMemo(
-    () => normalizeMatches(matchesParam ? JSON.parse(matchesParam) : []),
-    [matchesParam]
+  const [allMatches, setAllMatches] = useState<Match[]>([]);
+  const [userName, setUserName] = useState(paramName ?? "");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setError("");
+    try {
+      const { profile, matches } = await loadMyMatches();
+      if (profile?.name) setUserName(profile.name);
+      setAllMatches(matches);
+    } catch {
+      setError("We couldn't load your matches. Check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Reload on return, so someone just blocked drops out of the list.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
   );
 
   const topMatches = allMatches.slice(0, 3);
@@ -41,8 +62,8 @@ export default function MatchResults() {
       params: {
         match: JSON.stringify(match),
         matchIndex: String(index),
-        matches: matchesParam ?? "[]",
-        userName: userName ?? "",
+        matches: JSON.stringify(allMatches),
+        userName,
       },
     });
   };
@@ -52,6 +73,8 @@ export default function MatchResults() {
       activeOpacity={0.9}
       onPress={() => openMatchProfile(match, index)}
       style={styles.matchCard}
+      accessibilityRole="button"
+      accessibilityLabel={`${match.name}, ${match.score} percent match. View profile`}
     >
       <View style={styles.matchHeader}>
         <Text style={styles.matchName}>{match.name}</Text>
@@ -102,6 +125,8 @@ export default function MatchResults() {
       activeOpacity={0.9}
       onPress={() => openMatchProfile(match, index)}
       style={styles.miniCard}
+      accessibilityRole="button"
+      accessibilityLabel={`${match.name}, ${match.score} percent match. View profile`}
     >
       <View style={styles.miniRow}>
         <View style={styles.miniLeft}>
@@ -142,20 +167,44 @@ export default function MatchResults() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.appName}>Sandrapp</Text>
-        <Text style={styles.title}>Your Matches</Text>
+    <View style={styles.container}>
+      <ScrollView style={styles.flex} contentContainerStyle={styles.scroll}>
+        <Text style={styles.title} accessibilityRole="header">
+          Your Matches
+        </Text>
         <Text style={styles.subtitle}>
           These are your top community connections
         </Text>
 
-        {allMatches.length === 0 ? (
+        {loading ? (
+          <ActivityIndicator size="large" color="#2F80ED" style={styles.spinner} />
+        ) : error ? (
+          <View style={styles.emptyCard} accessibilityRole="alert">
+            <Text style={styles.emptyText}>{error}</Text>
+            <TouchableOpacity
+              style={styles.retryBtn}
+              onPress={() => {
+                setLoading(true);
+                load();
+              }}
+              accessibilityRole="button"
+            >
+              <Text style={styles.retryBtnText}>Try Again</Text>
+            </TouchableOpacity>
+          </View>
+        ) : allMatches.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>
-              No matches found yet. Make sure the backend is running and your
-              profile is complete.
+              No matches yet. Finish your profile and we'll find people who
+              share your interests and values.
             </Text>
+            <TouchableOpacity
+              style={styles.retryBtn}
+              onPress={() => router.push("/survey")}
+              accessibilityRole="button"
+            >
+              <Text style={styles.retryBtnText}>Take the Survey</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <>
@@ -168,6 +217,8 @@ export default function MatchResults() {
                 <TouchableOpacity
                   style={styles.othersToggle}
                   onPress={() => setShowOthers((v) => !v)}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: showOthers }}
                 >
                   <Text style={styles.othersToggleText}>
                     {showOthers
@@ -197,37 +248,30 @@ export default function MatchResults() {
             )}
           </>
         )}
-
-        <TouchableOpacity
-          style={styles.homeBtn}
-          onPress={() =>
-            router.push({
-              pathname: "/home",
-              params: {
-                matches: JSON.stringify(allMatches),
-                userName: userName ?? "",
-              },
-            })
-          }
-        >
-          <Text style={styles.homeBtnText}>Go to Dashboard</Text>
-        </TouchableOpacity>
       </ScrollView>
-    </SafeAreaView>
+      <BottomNav active="matches" />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#EAF3FF" },
-  scroll: { padding: 20, paddingBottom: 60, alignItems: "center" },
-
-  appName: {
-    alignSelf: "flex-start",
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#2F80ED",
-    marginBottom: 6,
+  container: {
+    flex: 1,
+    backgroundColor: "#EAF3FF",
+    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 0,
   },
+  flex: { flex: 1 },
+  scroll: { padding: 20, paddingBottom: 24, alignItems: "center" },
+  spinner: { marginTop: 40 },
+  retryBtn: {
+    marginTop: 16,
+    backgroundColor: "#2F80ED",
+    borderRadius: 12,
+    minHeight: 46,
+    paddingHorizontal: 28,
+    justifyContent: "center",
+  },
+  retryBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
 
   title: {
     fontSize: 28,
@@ -418,21 +462,5 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 14,
-  },
-
-  homeBtn: {
-    marginTop: 8,
-    backgroundColor: "#2F80ED",
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 40,
-    width: "100%",
-    alignItems: "center",
-  },
-
-  homeBtnText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
   },
 });
