@@ -508,6 +508,10 @@ def init_db():
             )
         """)
         c.execute("ALTER TABLE reports ENABLE ROW LEVEL SECURITY")
+        # Profiles, emails, survey transcripts and requests: the anon key ships
+        # in the app, so without this anyone could read them over the REST API.
+        for table in ("candidates", "survey_responses", "connection_requests", "push_tokens"):
+            c.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
         c.execute("SELECT COUNT(*) FROM candidates")
         if c.fetchone()[0] == 0:
             for candidate in SEED_CANDIDATES:
@@ -1193,14 +1197,6 @@ def health_check():
         "matching_mode": "intergenerational",
     }), 200
 
-@app.route("/api/candidates", methods=["GET"])
-def list_candidates():
-    try:
-        candidates = get_all_candidates()
-        return jsonify({"candidates": candidates, "total": len(candidates)}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 @app.route("/api/match", methods=["POST"])
 def calculate_matches():
     try:
@@ -1280,24 +1276,6 @@ def calculate_matches():
             "scoring_method": "ml_model" if (ML_MODEL and ML_SCALER) else "rule_based",
         }), 200
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/users", methods=["GET"])
-def list_users():
-    try:
-        with db_cursor() as (conn, c):
-            c.execute("SELECT id, name, profile FROM candidates")
-            rows = c.fetchall()
-
-        users = []
-        for row in rows:
-            profile = json.loads(row[2])
-            profile.pop("email", None)
-            profile["id"] = row[0]
-            users.append(profile)
-
-        return jsonify(users), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -2328,8 +2306,6 @@ if __name__ == "__main__":
     print("=" * 55)
     print(f"  Scoring: {'ML Neural Network' if ML_MODEL else 'Rule-based (fallback)'}")
     print("  GET  /health                  - Health check")
-    print("  GET  /api/candidates          - List all profiles")
-    print("  GET  /api/users               - List all users")
     print("  POST /api/match               - Find top matches")
     print("  POST /api/users               - Add/update current user (auth)")
     print("  GET  /api/users/me            - Get current user (auth)")
