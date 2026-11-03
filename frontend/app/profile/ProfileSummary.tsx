@@ -265,10 +265,10 @@ const styles = StyleSheet.create({
     padding: 24,
     backgroundColor: "#EAF3FF",
   },
-  emptyText: { fontSize: 16, color: "#555", textAlign: "center", marginBottom: 18, lineHeight: 24 },
+  emptyText: { fontSize: 18, color: "#555", textAlign: "center", marginBottom: 18, lineHeight: 27 },
 
-  pageTitle: { fontSize: 28, fontWeight: "800", color: "#1A1A2E" },
-  pageSub: { fontSize: 15, color: "#555", lineHeight: 22, marginTop: 4, marginBottom: 18 },
+  pageTitle: { fontSize: 30, fontWeight: "800", color: "#1A1A2E" },
+  pageSub: { fontSize: 17, color: "#555", lineHeight: 25, marginTop: 4, marginBottom: 18 },
 
   card: {
     backgroundColor: "#fff",
@@ -282,14 +282,14 @@ const styles = StyleSheet.create({
   },
   identity: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
   identityText: { flex: 1, marginLeft: 16 },
-  name: { fontSize: 24, fontWeight: "800", color: "#1A1A2E" },
-  detail: { fontSize: 15, color: "#444", marginTop: 2 },
-  role: { fontSize: 13, color: "#2F80ED", fontWeight: "600", marginTop: 4 },
+  name: { fontSize: 26, fontWeight: "800", color: "#1A1A2E" },
+  detail: { fontSize: 17, color: "#444", marginTop: 2 },
+  role: { fontSize: 15, color: "#2F80ED", fontWeight: "600", marginTop: 4 },
 
   section: { marginBottom: 18 },
   lastSection: { marginBottom: 0 },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "600",
     color: "#666",
     textTransform: "uppercase",
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 8,
   },
-  quote: { fontSize: 16, color: "#1A1A2E", lineHeight: 24, fontStyle: "italic", marginBottom: 8 },
+  quote: { fontSize: 18, color: "#1A1A2E", lineHeight: 27, fontStyle: "italic", marginBottom: 8 },
   tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   tag: {
     backgroundColor: "#EEF4FF",
@@ -307,8 +307,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#B0C8F0",
   },
-  tagText: { fontSize: 14, color: "#2F80ED", fontWeight: "500" },
-  missing: { fontSize: 14, color: "#888", fontStyle: "italic" },
+  tagText: { fontSize: 16, color: "#2F80ED", fontWeight: "500" },
+  missing: { fontSize: 16, color: "#888", fontStyle: "italic" },
 
   primaryBtn: {
     backgroundColor: "#2F80ED",
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     marginTop: 4,
   },
-  primaryBtnText: { color: "#fff", fontSize: 18, fontWeight: "700" },
+  primaryBtnText: { color: "#fff", fontSize: 20, fontWeight: "700" },
   secondaryBtn: {
     borderRadius: 14,
     paddingVertical: 14,
@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     marginTop: 10,
   },
-  secondaryBtnText: { color: "#2F80ED", fontSize: 16, fontWeight: "700" },
+  secondaryBtnText: { color: "#2F80ED", fontSize: 18, fontWeight: "700" },
   logoutBtn: {
     borderRadius: 14,
     paddingVertical: 14,
@@ -342,5 +342,5 @@ const styles = StyleSheet.create({
     backgroundColor: "#FEF3F2",
     marginTop: 10,
   },
-  logoutText: { color: "#B42318", fontSize: 16, fontWeight: "700" },
+  logoutText: { color: "#B42318", fontSize: 18, fontWeight: "700" },
 });

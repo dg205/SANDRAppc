@@ -328,8 +328,8 @@ const styles = StyleSheet.create({
   scroll: { padding: 16, paddingBottom: 24 },
   spinner: { marginTop: 40 },
 
-  title: { fontSize: 28, fontWeight: "800", color: "#1A1A2E" },
-  subtitle: { fontSize: 15, color: "#4B5563", marginTop: 2, marginBottom: 14 },
+  title: { fontSize: 30, fontWeight: "800", color: "#1A1A2E" },
+  subtitle: { fontSize: 17, color: "#4B5563", marginTop: 2, marginBottom: 14 },
 
   search: {
     flexDirection: "row",
@@ -342,7 +342,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#DDE3ED",
   },
-  searchInput: { flex: 1, fontSize: 16, color: "#1A1A2E", paddingVertical: 10 },
+  searchInput: { flex: 1, fontSize: 18, color: "#1A1A2E", paddingVertical: 10 },
 
   chips: { flexDirection: "row", gap: 8, marginTop: 12, marginBottom: 6 },
   chip: {
@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   chipActive: { backgroundColor: "#111827", borderColor: "#111827" },
-  chipText: { fontSize: 14, fontWeight: "600", color: "#374151" },
+  chipText: { fontSize: 16, fontWeight: "600", color: "#374151" },
   chipTextActive: { color: "#fff" },
 
   listHeader: {
@@ -365,8 +365,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 10,
   },
-  listTitle: { fontSize: 19, fontWeight: "700", color: "#1A1A2E" },
-  count: { fontSize: 14, color: "#4B5563" },
+  listTitle: { fontSize: 21, fontWeight: "700", color: "#1A1A2E" },
+  count: { fontSize: 16, color: "#4B5563" },
 
   card: {
     backgroundColor: "#fff",
@@ -380,20 +380,20 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: "row", alignItems: "center" },
   info: { flex: 1, marginLeft: 12 },
-  name: { fontSize: 18, fontWeight: "700", color: "#1A1A2E" },
-  detail: { fontSize: 14, color: "#4B5563", marginTop: 2 },
+  name: { fontSize: 20, fontWeight: "700", color: "#1A1A2E" },
+  detail: { fontSize: 16, color: "#4B5563", marginTop: 2 },
   scorePill: {
     backgroundColor: "#EAF3FF",
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
-  scoreText: { color: "#1D5FBF", fontSize: 13, fontWeight: "700" },
+  scoreText: { color: "#1D5FBF", fontSize: 15, fontWeight: "700" },
 
   tags: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },
   tag: { backgroundColor: "#F1F5F9", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-  tagText: { fontSize: 13, color: "#374151", fontWeight: "500" },
-  reason: { fontSize: 15, color: "#374151", marginTop: 10, lineHeight: 21 },
+  tagText: { fontSize: 15, color: "#374151", fontWeight: "500" },
+  reason: { fontSize: 17, color: "#374151", marginTop: 10, lineHeight: 24 },
 
   buttons: { flexDirection: "row", gap: 10, marginTop: 14 },
   outlineBtn: {
@@ -406,7 +406,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#fff",
   },
-  outlineBtnText: { color: "#1A1A2E", fontSize: 15, fontWeight: "700" },
+  outlineBtnText: { color: "#1A1A2E", fontSize: 17, fontWeight: "700" },
   darkBtn: {
     backgroundColor: "#111827",
     borderRadius: 999,
@@ -417,7 +417,7 @@ const styles = StyleSheet.create({
   },
   flexBtn: { flex: 1, paddingHorizontal: 0 },
   btnDisabled: { backgroundColor: "#6B7280" },
-  darkBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  darkBtnText: { color: "#fff", fontSize: 17, fontWeight: "700" },
 
   emptyCard: {
     backgroundColor: "#fff",
@@ -426,6 +426,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 12,
   },
-  emptyText: { color: "#4B5563", textAlign: "center", fontSize: 16, lineHeight: 23, marginBottom: 14 },
-  link: { fontSize: 15, fontWeight: "700", color: "#2F80ED" },
+  emptyText: { color: "#4B5563", textAlign: "center", fontSize: 18, lineHeight: 26, marginBottom: 14 },
+  link: { fontSize: 17, fontWeight: "700", color: "#2F80ED" },
 });

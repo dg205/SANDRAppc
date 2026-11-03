@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
   },
   brand: { flexDirection: "row", alignItems: "center", gap: 10 },
   brandIcon: { width: 40, height: 40 },
-  brandName: { fontSize: 20, fontWeight: "800", color: "#1A1A2E", letterSpacing: 1 },
+  brandName: { fontSize: 22, fontWeight: "800", color: "#1A1A2E", letterSpacing: 1 },
   profileBtn: {
     width: 44,
     height: 44,

@@ -257,10 +257,10 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { padding: 20, paddingBottom: 24 },
 
-  pageTitle: { fontSize: 28, fontWeight: "800", color: "#1A1A2E", marginBottom: 8 },
+  pageTitle: { fontSize: 30, fontWeight: "800", color: "#1A1A2E", marginBottom: 8 },
 
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "700",
     color: "#666",
     marginTop: 20,
@@ -269,10 +269,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 18,
     color: "#666",
     textAlign: "center",
-    lineHeight: 24,
+    lineHeight: 27,
     marginTop: 40,
   },
   errorBox: {
@@ -286,8 +286,8 @@ const styles = StyleSheet.create({
     padding: 12,
     marginVertical: 12,
   },
-  errorText: { flex: 1, fontSize: 15, color: "#B42318" },
-  errorAction: { fontSize: 15, fontWeight: "700", color: "#B42318" },
+  errorText: { flex: 1, fontSize: 17, color: "#B42318" },
+  errorAction: { fontSize: 17, fontWeight: "700", color: "#B42318" },
 
   card: {
     backgroundColor: "#fff",
@@ -304,9 +304,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  cardName: { fontSize: 20, fontWeight: "700", color: "#1A1A2E" },
-  cardDetail: { fontSize: 15, color: "#555", marginTop: 4 },
-  cardMessage: { fontSize: 15, color: "#444", fontStyle: "italic", marginTop: 8 },
+  cardName: { fontSize: 22, fontWeight: "700", color: "#1A1A2E" },
+  cardDetail: { fontSize: 17, color: "#555", marginTop: 4 },
+  cardMessage: { fontSize: 17, color: "#444", fontStyle: "italic", marginTop: 8 },
 
   actions: { flexDirection: "row", gap: 10, marginTop: 14 },
   acceptBtn: {
@@ -316,7 +316,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: "center",
   },
-  acceptText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  acceptText: { color: "#fff", fontSize: 18, fontWeight: "700" },
   declineBtn: {
     flex: 1,
     backgroundColor: "#FFF0F0",
@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: "center",
   },
-  declineText: { color: "#E74C3C", fontSize: 16, fontWeight: "600" },
+  declineText: { color: "#E74C3C", fontSize: 18, fontWeight: "600" },
   btnBusy: { opacity: 0.5 },
   chatBtn: {
     marginTop: 14,
@@ -335,11 +335,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: "center",
   },
-  chatBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  chatBtnText: { color: "#fff", fontSize: 18, fontWeight: "700" },
 
   badge: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4 },
   badgeGreen: { backgroundColor: "#27AE60" },
   badgeAmber: { backgroundColor: "#F39C12" },
   badgeRed: { backgroundColor: "#E74C3C" },
-  badgeText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  badgeText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 });

@@ -57,7 +57,7 @@ export default function BottomNav({ active }: { active: Tab }) {
           >
             <Ionicons
               name={selected ? tab.activeIcon : tab.icon}
-              size={24}
+              size={26}
               color={selected ? "#2F80ED" : "#6B7280"}
             />
             <Text style={[styles.label, selected && styles.labelActive]}>{tab.label}</Text>
@@ -85,6 +85,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   tabActive: { backgroundColor: "#EAF3FF" },
-  label: { fontSize: 13, color: "#6B7280", marginTop: 2, fontWeight: "500" },
+  label: { fontSize: 15, color: "#6B7280", marginTop: 2, fontWeight: "500" },
   labelActive: { color: "#2F80ED", fontWeight: "700" },
 });

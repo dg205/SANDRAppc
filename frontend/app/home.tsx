@@ -196,6 +196,18 @@ export default function Dashboard() {
           <Text style={styles.heroSub}>
             Your next meaningful connection could be just a hello away.
           </Text>
+          <TouchableOpacity
+            style={styles.heroLink}
+            onPress={() =>
+              router.replace({ pathname: "/profile/ProfileSummary", params: { from: "tab" } })
+            }
+            accessibilityRole="link"
+            accessibilityLabel="View my profile"
+            hitSlop={10}
+          >
+            <Text style={styles.heroLinkText}>View my profile</Text>
+            <Ionicons name="chevron-forward" size={18} color="#fff" />
+          </TouchableOpacity>
         </View>
 
         {requestsError !== "" && (
@@ -442,14 +454,16 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   heroEyebrow: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "700",
     color: "rgba(255,255,255,0.8)",
     letterSpacing: 1,
     marginBottom: 6,
   },
-  greeting: { fontSize: 28, fontWeight: "800", color: "#fff", marginBottom: 6 },
-  heroSub: { fontSize: 16, color: "#fff", lineHeight: 22 },
+  greeting: { fontSize: 30, fontWeight: "800", color: "#fff", marginBottom: 6 },
+  heroSub: { fontSize: 18, color: "#fff", lineHeight: 25 },
+  heroLink: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", marginTop: 12 },
+  heroLinkText: { fontSize: 17, fontWeight: "700", color: "#fff", marginRight: 2 },
 
   /* Error banner */
   errorBanner: {
@@ -463,8 +477,8 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 14,
   },
-  errorBannerText: { flex: 1, fontSize: 15, color: "#B42318" },
-  errorBannerAction: { fontSize: 15, fontWeight: "700", color: "#B42318" },
+  errorBannerText: { flex: 1, fontSize: 17, color: "#B42318" },
+  errorBannerAction: { fontSize: 17, fontWeight: "700", color: "#B42318" },
 
   /* Cards */
   card: {
@@ -479,9 +493,9 @@ const styles = StyleSheet.create({
   },
   center: { alignItems: "center" },
   cardTitleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
-  cardTitle: { fontSize: 18, fontWeight: "700", color: "#1A1A2E" },
-  cardSub: { fontSize: 15, color: "#4B5563", lineHeight: 21 },
-  link: { fontSize: 15, fontWeight: "700", color: "#2F80ED", marginTop: 10 },
+  cardTitle: { fontSize: 20, fontWeight: "700", color: "#1A1A2E" },
+  cardSub: { fontSize: 17, color: "#4B5563", lineHeight: 24 },
+  link: { fontSize: 17, fontWeight: "700", color: "#2F80ED", marginTop: 10 },
 
   requestRow: {
     flexDirection: "row",
@@ -490,7 +504,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     gap: 10,
   },
-  requestText: { flex: 1, fontSize: 16, fontWeight: "600", color: "#1A1A2E" },
+  requestText: { flex: 1, fontSize: 18, fontWeight: "600", color: "#1A1A2E" },
 
   smallBtn: {
     backgroundColor: "#2F80ED",
@@ -499,7 +513,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     justifyContent: "center",
   },
-  smallBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  smallBtnText: { color: "#fff", fontSize: 17, fontWeight: "700" },
 
   /* Section headers */
   sectionHeader: {
@@ -509,18 +523,18 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 10,
   },
-  sectionTitle: { fontSize: 19, fontWeight: "700", color: "#1A1A2E" },
-  sectionAction: { fontSize: 15, fontWeight: "700", color: "#2F80ED" },
+  sectionTitle: { fontSize: 21, fontWeight: "700", color: "#1A1A2E" },
+  sectionAction: { fontSize: 17, fontWeight: "700", color: "#2F80ED" },
 
   /* People (connections and matches) */
   personRow: { flexDirection: "row", alignItems: "center" },
   personInfo: { flex: 1, marginLeft: 12 },
-  personName: { fontSize: 18, fontWeight: "700", color: "#1A1A2E" },
-  personDetail: { fontSize: 14, color: "#4B5563", marginTop: 2 },
+  personName: { fontSize: 20, fontWeight: "700", color: "#1A1A2E" },
+  personDetail: { fontSize: 16, color: "#4B5563", marginTop: 2 },
 
   /* Meetup */
-  meetupWith: { fontSize: 16, fontWeight: "700", color: "#1A1A2E", marginBottom: 2 },
-  meetupStatus: { fontSize: 14, color: "#B54708", marginTop: 6, fontWeight: "600" },
+  meetupWith: { fontSize: 18, fontWeight: "700", color: "#1A1A2E", marginBottom: 2 },
+  meetupStatus: { fontSize: 16, color: "#B54708", marginTop: 6, fontWeight: "600" },
   meetupConfirmed: { color: "#067647" },
 
   /* Match cards */
@@ -530,9 +544,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
-  scoreText: { color: "#1D5FBF", fontSize: 13, fontWeight: "700" },
-  relation: { fontSize: 14, color: "#067647", fontWeight: "700", marginTop: 10 },
-  highlight: { fontSize: 15, color: "#374151", marginTop: 10, lineHeight: 21 },
+  scoreText: { color: "#1D5FBF", fontSize: 15, fontWeight: "700" },
+  relation: { fontSize: 16, color: "#067647", fontWeight: "700", marginTop: 10 },
+  highlight: { fontSize: 17, color: "#374151", marginTop: 10, lineHeight: 24 },
   outlineBtn: {
     marginTop: 12,
     borderWidth: 1.5,
@@ -542,10 +556,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  outlineBtnText: { color: "#2F80ED", fontSize: 16, fontWeight: "700" },
+  outlineBtnText: { color: "#2F80ED", fontSize: 18, fontWeight: "700" },
 
   /* Empty / loading / error */
-  emptyText: { fontSize: 16, color: "#4B5563", textAlign: "center", marginBottom: 16, lineHeight: 24 },
+  emptyText: { fontSize: 18, color: "#4B5563", textAlign: "center", marginBottom: 16, lineHeight: 27 },
   loadingText: { marginTop: 12 },
   primaryBtn: {
     backgroundColor: "#2F80ED",
@@ -554,5 +568,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     justifyContent: "center",
   },
-  primaryBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  primaryBtnText: { color: "#fff", fontWeight: "700", fontSize: 18 },
 });
