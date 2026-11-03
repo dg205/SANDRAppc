@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   RefreshControl,
   ActivityIndicator,
   Platform,
@@ -19,7 +18,10 @@ import {
   otherPerson,
 } from "../../utils/api";
 import { getItem, SESSION_KEY } from "../../utils/storage";
+import BottomNav from "../../components/BottomNav";
 
+// The Messages tab: requests waiting for an answer, conversations with
+// connections, and requests this user sent.
 export default function Requests() {
   const { userName: paramName } = useLocalSearchParams<{ userName?: string }>();
 
@@ -49,7 +51,8 @@ export default function Requests() {
       setError("");
       setRequests(await getConnectRequests(name, "all"));
     } catch (err) {
-      setError(String(err));
+      console.warn("Load requests failed:", err);
+      setError("We couldn't load your messages. Pull down or tap Try again.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -69,7 +72,12 @@ export default function Requests() {
       await respondToConnectRequest(id, status);
       await load();
     } catch (err) {
-      setError(String(err));
+      console.warn("Respond to request failed:", err);
+      setError(
+        status === "accepted"
+          ? "We couldn't accept that request. Please try again."
+          : "We couldn't decline that request. Please try again."
+      );
     } finally {
       setBusyId(null);
     }
@@ -86,8 +94,9 @@ export default function Requests() {
   const when = (r: ConnectionRequest) => `${r.proposed_day} · ${r.proposed_time}`;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <ScrollView
+        style={styles.flex}
         contentContainerStyle={styles.scroll}
         refreshControl={
           <RefreshControl
@@ -99,13 +108,25 @@ export default function Requests() {
           />
         }
       >
-        <TouchableOpacity hitSlop={12} onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
+        <Text style={styles.pageTitle} accessibilityRole="header">
+          Messages
+        </Text>
 
-        <Text style={styles.pageTitle}>My Requests</Text>
-
-        {error !== "" && <Text style={styles.errorText}>{error}</Text>}
+        {error !== "" && (
+          <View style={styles.errorBox} accessibilityRole="alert">
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setLoading(true);
+                load();
+              }}
+              accessibilityRole="button"
+              hitSlop={10}
+            >
+              <Text style={styles.errorAction}>Try again</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {loading ? (
           <ActivityIndicator color="#2F80ED" style={{ marginTop: 40 }} />
@@ -113,8 +134,8 @@ export default function Requests() {
           <>
             {isEmpty && error === "" && (
               <Text style={styles.emptyText}>
-                No requests yet. Open one of your matches and tap "Request to
-                Connect" to get started.
+                No messages or requests yet. Open one of your matches and tap
+                "Request to Connect" to get started.
               </Text>
             )}
 
@@ -133,6 +154,8 @@ export default function Requests() {
                         style={[styles.acceptBtn, busyId === r.id && styles.btnBusy]}
                         disabled={busyId === r.id}
                         onPress={() => respond(r.id, "accepted")}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Accept request from ${r.from_user_name}`}
                       >
                         <Text style={styles.acceptText}>Accept</Text>
                       </TouchableOpacity>
@@ -140,6 +163,8 @@ export default function Requests() {
                         style={[styles.declineBtn, busyId === r.id && styles.btnBusy]}
                         disabled={busyId === r.id}
                         onPress={() => respond(r.id, "rejected")}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Decline request from ${r.from_user_name}`}
                       >
                         <Text style={styles.declineText}>Decline</Text>
                       </TouchableOpacity>
@@ -151,7 +176,9 @@ export default function Requests() {
 
             {connected.length > 0 && (
               <>
-                <Text style={styles.sectionTitle}>Connected</Text>
+                <Text style={styles.sectionTitle} accessibilityRole="header">
+                  Your conversations
+                </Text>
                 {connected.map((r) => {
                   const other = otherPerson(r, me);
                   return (
@@ -165,6 +192,8 @@ export default function Requests() {
                       <Text style={styles.cardDetail}>{when(r)}</Text>
                       <TouchableOpacity
                         style={styles.chatBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open chat with ${other.name}`}
                         onPress={() =>
                           router.push({
                             pathname: "/profile/Chat",
@@ -214,7 +243,8 @@ export default function Requests() {
           </>
         )}
       </ScrollView>
-    </SafeAreaView>
+      <BottomNav active="messages" />
+    </View>
   );
 }
 
@@ -224,14 +254,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#EAF3FF",
     paddingTop: Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 0,
   },
-  scroll: { padding: 20, paddingBottom: 48 },
+  flex: { flex: 1 },
+  scroll: { padding: 20, paddingBottom: 24 },
 
-  backBtn: { marginBottom: 12 },
-  backText: { fontSize: 16, color: "#2F80ED", fontWeight: "600" },
-  pageTitle: { fontSize: 28, fontWeight: "800", color: "#1A1A2E", marginBottom: 8 },
+  pageTitle: { fontSize: 30, fontWeight: "800", color: "#1A1A2E", marginBottom: 8 },
 
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "700",
     color: "#666",
     marginTop: 20,
@@ -240,18 +269,25 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 18,
     color: "#666",
     textAlign: "center",
-    lineHeight: 24,
+    lineHeight: 27,
     marginTop: 40,
   },
-  errorText: {
-    fontSize: 14,
-    color: "#E74C3C",
-    textAlign: "center",
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#FEF3F2",
+    borderColor: "#FDA29B",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
     marginVertical: 12,
   },
+  errorText: { flex: 1, fontSize: 17, color: "#B42318" },
+  errorAction: { fontSize: 17, fontWeight: "700", color: "#B42318" },
 
   card: {
     backgroundColor: "#fff",
@@ -268,9 +304,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  cardName: { fontSize: 20, fontWeight: "700", color: "#1A1A2E" },
-  cardDetail: { fontSize: 15, color: "#555", marginTop: 4 },
-  cardMessage: { fontSize: 15, color: "#444", fontStyle: "italic", marginTop: 8 },
+  cardName: { fontSize: 22, fontWeight: "700", color: "#1A1A2E" },
+  cardDetail: { fontSize: 17, color: "#555", marginTop: 4 },
+  cardMessage: { fontSize: 17, color: "#444", fontStyle: "italic", marginTop: 8 },
 
   actions: { flexDirection: "row", gap: 10, marginTop: 14 },
   acceptBtn: {
@@ -280,7 +316,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: "center",
   },
-  acceptText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  acceptText: { color: "#fff", fontSize: 18, fontWeight: "700" },
   declineBtn: {
     flex: 1,
     backgroundColor: "#FFF0F0",
@@ -290,7 +326,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: "center",
   },
-  declineText: { color: "#E74C3C", fontSize: 16, fontWeight: "600" },
+  declineText: { color: "#E74C3C", fontSize: 18, fontWeight: "600" },
   btnBusy: { opacity: 0.5 },
   chatBtn: {
     marginTop: 14,
@@ -299,11 +335,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: "center",
   },
-  chatBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  chatBtnText: { color: "#fff", fontSize: 18, fontWeight: "700" },
 
   badge: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4 },
   badgeGreen: { backgroundColor: "#27AE60" },
   badgeAmber: { backgroundColor: "#F39C12" },
   badgeRed: { backgroundColor: "#E74C3C" },
-  badgeText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  badgeText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 });
