@@ -306,35 +306,10 @@ def get_blocked_ids(c, my_id):
     return {row[0] for row in c.fetchall()}
 
 
-# ---------------------------------------------------------------------------
-# Load ML model at startup
-# ---------------------------------------------------------------------------
+# The learned match model, if one has been trained and passed its check
+# (see retrain.py). Loaded by load_model(), defined with the scoring code.
 ML_MODEL = None
 ML_SCALER = None
-
-try:
-    with open(MODEL_PATH, "rb") as f:
-        ML_MODEL = pickle.load(f)
-    with open(SCALER_PATH, "rb") as f:
-        ML_SCALER = pickle.load(f)
-    print("ML model loaded successfully.")
-except Exception as e:
-    print(f"Warning: Could not load ML model ({e}). Using rule-based scoring.")
-
-ML_FEATURES = [
-    "age_diff", "same_city", "same_religion", "same_mobility",
-    "interest_overlap", "tech_compatibility", "comm_style_compatibility",
-    "comfort_compatibility",
-    "food_cuisine_overlap", "dietary_restriction_conflict",
-    "cultural_background_match", "holiday_overlap", "multilingual_fluency_match",
-    "hobby_overlap", "spirituality_match",
-    "life_stage_needs_alignment",
-    "pref_comm_style_match",
-    "tech_affinity_gap",
-    "companionship_gap_overlap",
-    "volunteering_help_match",
-    "shared_memory_trigger_overlap",
-]
 
 # ---------------------------------------------------------------------------
 # Seed profiles
@@ -558,13 +533,7 @@ def init_db():
         from retrain import retrain_model
         result = retrain_model()
         print(f"Model retrained on startup: {result}")
-        with open(MODEL_PATH, "rb") as f:
-            ML_MODEL_NEW = pickle.load(f)
-        with open(SCALER_PATH, "rb") as f:
-            ML_SCALER_NEW = pickle.load(f)
-        global ML_MODEL, ML_SCALER
-        ML_MODEL = ML_MODEL_NEW
-        ML_SCALER = ML_SCALER_NEW
+        load_model()
     except Exception as e:
         print(f"Startup retrain skipped: {e}")
 
@@ -1082,13 +1051,6 @@ def derive_ml_features(senior, companion):
         "shared_memory_trigger_overlap": shared_memory_trigger_overlap,
     }
 
-def compute_ml_score(senior, companion):
-    features = derive_ml_features(senior, companion)
-    vec = pd.DataFrame([[features[f] for f in ML_FEATURES]], columns=ML_FEATURES)
-    scaled = ML_SCALER.transform(vec)
-    prob = ML_MODEL.predict_proba(scaled)[0][1]
-    return round(prob * 100, 1)
-
 # Interests that are close without being the same word, so "jazz" and
 # "music" or "running" and "walking" earn partial credit.
 INTEREST_GROUPS = {
@@ -1183,11 +1145,65 @@ def compute_rule_score(senior, companion):
     differ get different scores instead of piling up at a cap."""
     return round(sum(score_parts(senior, companion).values()), 1)
 
+# ---------------------------------------------------------------------------
+# Learned match model
+# ---------------------------------------------------------------------------
+# What the model sees for a pair: each rule-score part as a 0..1 share of its
+# weight, so it can learn from real outcomes which parts matter more or less
+# than the hand-set weights say, plus the raw age gap and a few signals the
+# rule score doesn't use.
+ML_EXTRA_FEATURES = ["age_diff", "tech_affinity_gap", "food_cuisine_overlap", "comfort_compatibility"]
+ML_FEATURES = [f"{part}_share" for part in SCORE_WEIGHTS] + ML_EXTRA_FEATURES
+
+# How much of the final score comes from the model when one is active.
+ML_BLEND_WEIGHT = 0.30
+
+def model_features(senior, companion):
+    parts = score_parts(senior, companion)
+    flags = derive_ml_features(senior, companion)
+    features = {f"{part}_share": parts[part] / weight for part, weight in SCORE_WEIGHTS.items()}
+    features.update({name: flags[name] for name in ML_EXTRA_FEATURES})
+    return features
+
+def load_model():
+    """Load the saved model, or fall back to rule-based scoring when there
+    is none (retrain.py removes it when it doesn't beat the rules) or it was
+    trained on a different feature list."""
+    global ML_MODEL, ML_SCALER
+    ML_MODEL = ML_SCALER = None
+    if not (os.path.exists(MODEL_PATH) and os.path.exists(SCALER_PATH)):
+        print("No trained match model; using rule-based scoring.")
+        return False
+    try:
+        with open(MODEL_PATH, "rb") as f:
+            model = pickle.load(f)
+        with open(SCALER_PATH, "rb") as f:
+            scaler = pickle.load(f)
+    except Exception as e:
+        print(f"Warning: could not load match model ({e}); using rule-based scoring.")
+        return False
+    if list(getattr(scaler, "feature_names_in_", [])) != ML_FEATURES:
+        print("Saved match model uses an old feature list; using rule-based scoring.")
+        return False
+    ML_MODEL, ML_SCALER = model, scaler
+    print("Match model loaded.")
+    return True
+
+load_model()
+
+def compute_ml_score(senior, companion):
+    features = model_features(senior, companion)
+    vec = pd.DataFrame([[features[f] for f in ML_FEATURES]], columns=ML_FEATURES)
+    prob = ML_MODEL.predict_proba(ML_SCALER.transform(vec))[0][1]
+    return round(prob * 100, 1)
+
+def blend_scores(rule, ml):
+    return rule * (1 - ML_BLEND_WEIGHT) + ml * ML_BLEND_WEIGHT
+
 def compute_match_score(senior, companion):
     rule = compute_rule_score(senior, companion)
     if ML_MODEL and ML_SCALER:
-        ml = compute_ml_score(senior, companion)
-        blended = rule * 0.70 + ml * 0.30
+        blended = blend_scores(rule, compute_ml_score(senior, companion))
         return round(min(blended, 99.0), 1)
     return rule
 
@@ -2239,14 +2255,8 @@ def retrain_endpoint():
     try:
         from retrain import retrain_model
         result = retrain_model()
-
-        # Reload the updated model into memory immediately
-        global ML_MODEL, ML_SCALER
-        with open(MODEL_PATH, "rb") as f:
-            ML_MODEL = pickle.load(f)
-        with open(SCALER_PATH, "rb") as f:
-            ML_SCALER = pickle.load(f)
-
+        # Pick up the new model, or drop the old one if this run didn't keep one.
+        load_model()
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -2349,7 +2359,7 @@ if __name__ == "__main__":
     print("\n" + "=" * 55)
     print("Community Connection Backend")
     print("=" * 55)
-    print(f"  Scoring: {'ML Neural Network' if ML_MODEL else 'Rule-based (fallback)'}")
+    print(f"  Scoring: {'Rule-based + learned model' if ML_MODEL else 'Rule-based'}")
     print("  GET  /health                  - Health check")
     print("  POST /api/match               - Find top matches")
     print("  POST /api/users               - Add/update current user (auth)")

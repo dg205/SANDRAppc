@@ -19,7 +19,7 @@ meetup.
 2. **Voice survey.** The user picks Senior or Companion, enters their age, and answers six spoken questions (bio, hobbies, how they like to meet, values, what they can teach, what they need help with). Each recording is transcribed with Groq Whisper.
 3. **Profile extraction.** A Groq language model reads the transcripts and fills in the structured fields the matcher compares (interests, values, help needed or offered, availability, ...). If that call fails, a keyword-based fallback is used.
 4. **Profile summary.** The user sees what the app understood and can edit it.
-5. **Matches.** The backend scores everyone on the opposite side and returns the top 10, with at most two people from the same city near the top.
+5. **Matches.** The backend scores everyone on the opposite side and returns the top 10, with at most two people from the same city near the top. The score comes from hand-set rules. A model trained on real accepted and declined requests is blended in (30%) only once there are enough of them and it ranks them better than the rules alone; see [Match model](#match-model).
 6. **Connect.** A user sends a connect request; the other person accepts or declines it.
 7. **Chat and meetup.** Accepted connections get a chat (polled every 5 seconds) and a meetup card where one person proposes a time and both confirm it.
 8. **Safety.** Users can block, report or remove a connection, upload a profile photo, and delete their account.
@@ -47,9 +47,25 @@ python app.py
 ```
 
 The API runs at **http://localhost:5000**. On startup it creates any missing
-database tables and retrains the model, which rewrites `scaler.pkl` and
-`trained_model.pkl`. Discard those changes unless you mean to commit a new
-model.
+database tables and retrains the match model. The model files
+(`trained_model.pkl`, `scaler.pkl`) are generated and not kept in git.
+
+### Match model
+
+`retrain.py` trains on every accepted (match) or rejected (no match)
+connection request. It keeps a model only when there are at least 40 such
+pairs with 10 of each, and when, in cross-validation, blending the model into
+the score ranks real outcomes clearly better than chance and better than the
+rule score alone (by ROC-AUC).
+Otherwise it removes any saved model and the app scores with rules only. It
+tries logistic regression and a random forest and keeps the better one.
+
+To see how models compare, from `backend/`:
+
+```bash
+python eval_model.py              # real outcomes (read-only)
+python eval_model.py --simulate   # made-up outcomes for the sample profiles
+```
 
 ### Frontend
 
@@ -88,7 +104,7 @@ and leave `EXPO_PUBLIC_API_URL` unset.
 | `SUPABASE_SERVICE_KEY` | Yes | Service-role key, for uploading audio and photos and deleting accounts |
 | `GROQ_API_KEY` | Yes | Speech-to-text and profile extraction |
 | `SUPABASE_JWT_SECRET` | No | Checks login tokens with the project's JWT secret. Without it, tokens are checked against the project's public keys at `SUPABASE_URL` |
-| `RETRAIN_SECRET` | No | Shared secret the daily retrain job must send. If unset, `/api/retrain` is open |
+| `RETRAIN_SECRET` | No | Shared secret the daily retrain job must send. If unset, `/api/retrain` refuses every request |
 | `GROQ_EXTRACT_MODEL` | No | Groq model for profile extraction (default `openai/gpt-oss-20b`) |
 | `PORT` | No | Port to listen on (default 5000; Render sets it automatically) |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | No | Alternative to `DATABASE_URL` |
@@ -119,7 +135,7 @@ Routes marked 🔒 need an `Authorization: Bearer <Supabase access token>` heade
 | Meetups | 🔒 `GET/PUT /api/connect/<id>/meetup` · 🔒 `POST /api/connect/<id>/meetup/confirm` |
 | Messages | 🔒 `POST /api/messages` · 🔒 `GET /api/messages/<connection_id>?since_id=` |
 | Safety | 🔒 `GET/POST /api/blocks` · 🔒 `DELETE /api/blocks/<id or user_name>` · 🔒 `POST /api/reports` |
-| Model | `POST /api/retrain` (needs the `X-Retrain-Secret` header when `RETRAIN_SECRET` is set) |
+| Model | `POST /api/retrain` (needs the `X-Retrain-Secret` header matching `RETRAIN_SECRET`) |
 
 ---
 
@@ -141,11 +157,10 @@ SANDRAppc/
 ├── backend/
 │   ├── app.py                # Flask API: routes, database setup, match scoring
 │   ├── profile_extract.py    # turns survey transcripts into profile fields
-│   ├── retrain.py            # trains the RandomForest match model
+│   ├── retrain.py            # trains the match model on real outcomes
+│   ├── eval_model.py         # compares match models against the rule score
 │   ├── eval_matching.py      # matcher evaluation
-│   ├── eval_extract.py       # profile extraction evaluation
-│   ├── trained_model.pkl     # saved model + scaler
-│   └── user_match_pairs_expanded_synthetic.csv   # training data
+│   └── eval_extract.py       # profile extraction evaluation
 └── frontend/
     ├── app/                  # screens (Expo Router: one file per route)
     │   ├── welcome, login, signup, home, survey, editProfile

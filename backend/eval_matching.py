@@ -49,13 +49,17 @@ def new_rule_score(senior, companion):
 
 
 def old_final_score(senior, companion):
-    """What the app showed before: old rules blended 70/30 with the model."""
+    """What the app showed before: old rules blended 70/30 with the model
+    (rules alone when no model is loaded)."""
+    if not backend.ML_MODEL:
+        return old_rule_score(senior, companion)
     ml = backend.compute_ml_score(senior, companion)
     return round(min(old_rule_score(senior, companion) * 0.7 + ml * 0.3, 96.0), 1)
 
 
 def new_final_score(senior, companion):
-    """What the app shows now: new rules blended 70/30 with the model."""
+    """What the app shows now: new rules, blended 70/30 with the model when
+    one is active."""
     return backend.compute_match_score(senior, companion)
 
 
