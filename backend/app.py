@@ -46,8 +46,6 @@ def transcribe_with_groq(audio_path):
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "trained_model.pkl")
 SCALER_PATH = os.path.join(os.path.dirname(__file__), "scaler.pkl")
-AUDIO_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "AudioRecordings")
-os.makedirs(AUDIO_UPLOAD_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # PostgreSQL connection (Supabase)
@@ -99,8 +97,9 @@ def _storage_config():
         return None
     return supabase_url, service_key
 
-def upload_bytes_to_storage(bucket, object_path, data, content_type):
-    """Upload to a public bucket and return the object's public URL, or None."""
+def upload_bytes_to_storage(bucket, object_path, data, content_type, public=True):
+    """Upload a file. Returns its public URL for a public bucket, its path
+    inside the bucket for a private one, or None if the upload failed."""
     config = _storage_config()
     if not config:
         return None
@@ -111,12 +110,15 @@ def upload_bytes_to_storage(bucket, object_path, data, content_type):
         headers={"Authorization": f"Bearer {service_key}", "Content-Type": content_type},
         data=data,
     )
-    if response.status_code in (200, 201):
-        public_url = f"{supabase_url}/storage/v1/object/public/{bucket}/{object_path}"
-        print(f"[storage] uploaded to Supabase: {public_url}")
-        return public_url
-    print(f"[storage] upload failed: {response.status_code} {response.text}")
-    return None
+    if response.status_code not in (200, 201):
+        print(f"[storage] upload failed: {response.status_code} {response.text}")
+        return None
+    if not public:
+        print(f"[storage] uploaded {bucket}/{object_path}")
+        return object_path
+    public_url = f"{supabase_url}/storage/v1/object/public/{bucket}/{object_path}"
+    print(f"[storage] uploaded to Supabase: {public_url}")
+    return public_url
 
 def storage_path_from_url(bucket, public_url):
     """Turn a public object URL back into its path inside the bucket."""
@@ -143,38 +145,101 @@ def delete_from_storage(bucket, object_paths):
     except Exception as e:
         print(f"[storage] delete failed: {e}")
 
-def ensure_public_bucket(bucket):
-    """Create a public storage bucket if it doesn't exist yet."""
+def list_storage_objects(bucket, prefix):
+    """Paths of the files directly under prefix ("folder/"), or [] on error."""
+    config = _storage_config()
+    if not config:
+        return []
+    supabase_url, service_key = config
+    try:
+        response = req.post(
+            f"{supabase_url}/storage/v1/object/list/{bucket}",
+            headers={"Authorization": f"Bearer {service_key}"},
+            json={"prefix": prefix, "limit": 1000},
+        )
+        if response.status_code != 200:
+            print(f"[storage] list failed: {response.status_code} {response.text}")
+            return []
+        return [prefix + item["name"] for item in response.json() if item.get("id")]
+    except Exception as e:
+        print(f"[storage] list failed: {e}")
+        return []
+
+def ensure_bucket(bucket, public):
+    """Create a storage bucket if it doesn't exist yet, and set it public or
+    private as asked, so a bucket changed by hand is put back."""
     config = _storage_config()
     if not config:
         return
     supabase_url, service_key = config
     try:
         headers = {"Authorization": f"Bearer {service_key}"}
-        if req.get(f"{supabase_url}/storage/v1/bucket/{bucket}", headers=headers).status_code == 200:
+        existing = req.get(f"{supabase_url}/storage/v1/bucket/{bucket}", headers=headers)
+        if existing.status_code == 200:
+            if existing.json().get("public") != public:
+                response = req.put(
+                    f"{supabase_url}/storage/v1/bucket/{bucket}",
+                    headers=headers,
+                    json={"id": bucket, "name": bucket, "public": public},
+                )
+                print(f"[storage] set bucket {bucket} public={public}: {response.status_code}")
             return
         response = req.post(
             f"{supabase_url}/storage/v1/bucket",
             headers=headers,
-            json={"id": bucket, "name": bucket, "public": True},
+            json={"id": bucket, "name": bucket, "public": public},
         )
         print(f"[storage] create bucket {bucket}: {response.status_code}")
     except Exception as e:
         print(f"[storage] bucket check failed: {e}")
 
-def upload_to_supabase_storage(file_path, file_name):
-    ext = os.path.splitext(file_name)[1].lower()
-    content_type_map = {
-        ".m4a": "audio/mp4",
-        ".mp3": "audio/mpeg",
-        ".wav": "audio/wav",
-        ".webm": "audio/webm",
-        ".ogg": "audio/ogg",
-    }
-    content_type = content_type_map.get(ext, "audio/octet-stream")
+# Survey recordings are people's own voices talking about where they live,
+# their health and their family, and the app never plays them back. So the
+# bucket is private and each person's recordings sit in a folder named after
+# their account (auth user id), which is how the server checks who owns one.
+AUDIO_CONTENT_TYPES = {
+    ".m4a": "audio/mp4",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".webm": "audio/webm",
+    ".ogg": "audio/ogg",
+}
 
-    with open(file_path, "rb") as f:
-        return upload_bytes_to_storage(AUDIO_BUCKET, file_name, f, content_type)
+def recording_folder(auth_user_id):
+    return f"{auth_user_id}/"
+
+def upload_recording(auth_user_id, data, file_name):
+    """Store a recording privately; returns its path in the bucket, or None."""
+    ext = os.path.splitext(file_name)[1].lower()
+    object_path = f"{recording_folder(auth_user_id)}{int(time.time() * 1000)}_{file_name}"
+    return upload_bytes_to_storage(
+        AUDIO_BUCKET, object_path, data,
+        AUDIO_CONTENT_TYPES.get(ext, "application/octet-stream"), public=False,
+    )
+
+def audio_object_path(value):
+    """Where a recording lives in the bucket. Rows from before the bucket was
+    private hold a public URL; newer ones hold the path itself."""
+    if not value or not isinstance(value, str):
+        return None
+    if value.startswith("http"):
+        return storage_path_from_url(AUDIO_BUCKET, value)
+    return value
+
+def own_recording(auth_user_id, value, already_theirs):
+    """The recording path to save for this person, or None if it isn't
+    theirs: in their folder, or one their earlier answers already used."""
+    path = audio_object_path(value)
+    if path and (path.startswith(recording_folder(auth_user_id)) or path in already_theirs):
+        return path
+    return None
+
+# Profile keys the survey screens add that point at recordings. Profiles are
+# shown to other people, so these are never stored in one.
+def strip_recording_links(profile):
+    for key in [k for k in profile if k.endswith("AudioServerPath") or k.endswith("AudioUri")]:
+        profile.pop(key, None)
+    return profile
 
 
 # ---------------------------------------------------------------------------
@@ -527,7 +592,8 @@ def init_db():
         migrate_names_to_ids(c)
         conn.commit()
 
-    ensure_public_bucket(PHOTO_BUCKET)
+    ensure_bucket(PHOTO_BUCKET, public=True)
+    ensure_bucket(AUDIO_BUCKET, public=False)
 
     try:
         from retrain import retrain_model
@@ -578,7 +644,7 @@ def get_all_candidates():
         rows = c.fetchall()
     candidates = []
     for row in rows:
-        p = json.loads(row[1])
+        p = strip_recording_links(json.loads(row[1]))
         p.pop("email", None)
         p["id"] = row[0]
         candidates.append(p)
@@ -1333,6 +1399,7 @@ def add_user(user_id, email):
         user_data["email"] = email
         # photoUrl is only ever set by the photo upload route
         user_data.pop("photoUrl", None)
+        strip_recording_links(user_data)
 
         with db_cursor() as (conn, c):
             # Retaking the survey replaces the profile; keep their photo.
@@ -1391,6 +1458,7 @@ def update_my_user(user_id, email):
         updates.pop("email", None)  # email is only ever set from the verified token
         updates.pop("photoUrl", None)  # and photoUrl only by the photo upload route
         updates.pop("fieldsFromVoice", None)  # kept by the server, see below
+        strip_recording_links(updates)
 
         with db_cursor() as (conn, c):
             c.execute("SELECT id, profile FROM candidates WHERE auth_user_id = %s", (user_id,))
@@ -1399,7 +1467,7 @@ def update_my_user(user_id, email):
                 return jsonify({"status": "not_found"}), 404
 
             candidate_id, profile_json = row
-            p = json.loads(profile_json)
+            p = strip_recording_links(json.loads(profile_json))
             # A field the person changes here is theirs now, so a later survey
             # retake won't refill it from their voice answers.
             from_voice = [k for k in p.get("fieldsFromVoice", [])
@@ -1520,7 +1588,11 @@ def delete_my_account(user_id, email):
                 "SELECT audio_file_path FROM survey_responses WHERE lower(user_email) = lower(%s)",
                 (email,),
             )
-            audio_paths = [storage_path_from_url(AUDIO_BUCKET, r[0]) for r in c.fetchall()]
+            # Their saved answers' recordings, plus any in their folder that
+            # never made it into a saved answer (re-recorded, or a survey
+            # they didn't finish).
+            audio_paths = [audio_object_path(r[0]) for r in c.fetchall()]
+            audio_paths += list_storage_objects(AUDIO_BUCKET, recording_folder(user_id))
 
             if my_id is not None:
                 c.execute(
@@ -1576,64 +1648,35 @@ def transcribe_audio(user_id, email):
         return jsonify({"error": "Too many recordings in the last hour. Please try again later."}), 429
 
     try:
-        print("[transcribe] content-type:", request.content_type)
-        print("[transcribe] files keys:", list(request.files.keys()))
-        print("[transcribe] json present:", request.is_json)
-
         # Preferred path: multipart/form-data file upload
         if "audio" in request.files:
             audio_file = request.files["audio"]
-            original_name = secure_filename(audio_file.filename or "recording.m4a")
-            ext = os.path.splitext(original_name)[1].lower() or ".m4a"
-
-            timestamp = int(time.time() * 1000)
-            final_name = f"{timestamp}_{original_name}"
-            saved_audio_path = os.path.join(AUDIO_UPLOAD_DIR, final_name)
-
-            audio_file.save(saved_audio_path)
-
-            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-                tmp_path = tmp.name
-
-            with open(saved_audio_path, "rb") as src, open(tmp_path, "wb") as dst:
-                dst.write(src.read())
-
+            file_name = secure_filename(audio_file.filename or "") or "recording.m4a"
+            audio_bytes = audio_file.read()
         # Backward-compatible fallback: JSON base64
         else:
             data = request.get_json(silent=True)
             if not data or "audio" not in data:
                 return jsonify({"error": "No audio data provided"}), 400
+            audio_bytes = base64.b64decode(data["audio"])
+            file_name = secure_filename(f"recording.{data.get('format', 'm4a')}") or "recording.m4a"
+        if len(audio_bytes) > MAX_AUDIO_BYTES:
+            return jsonify({"error": "Recording is too long"}), 413
 
-            audio_b64 = data["audio"]
-            fmt = data.get("format", "m4a")
-            audio_bytes = base64.b64decode(audio_b64)
-
-            timestamp = int(time.time() * 1000)
-            final_name = f"{timestamp}_recording.{fmt}"
-            saved_audio_path = os.path.join(AUDIO_UPLOAD_DIR, final_name)
-
-            with open(saved_audio_path, "wb") as f:
-                f.write(audio_bytes)
-
-            with tempfile.NamedTemporaryFile(suffix=f".{fmt}", delete=False) as tmp:
-                tmp_path = tmp.name
-                tmp.write(audio_bytes)
-
-        print(f"[transcribe] saved audio: {saved_audio_path}")
-        print(f"[transcribe] transcribing with Groq Whisper...")
+        # Only a temporary copy on the server, removed below once transcribed.
+        ext = os.path.splitext(file_name)[1].lower() or ".m4a"
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp_path = tmp.name
+            tmp.write(audio_bytes)
 
         text = transcribe_with_groq(tmp_path).strip()
-
-        # Upload audio to Supabase Storage and use the public URL if successful
-        final_audio_url = saved_audio_path
-        if saved_audio_path and os.path.exists(saved_audio_path):
-            storage_url = upload_to_supabase_storage(saved_audio_path, os.path.basename(saved_audio_path))
-            if storage_url:
-                final_audio_url = storage_url
+        # Kept privately with the person's other answers (None if storage is
+        # down; the transcript still comes back).
+        saved_audio_path = upload_recording(user_id, audio_bytes, file_name)
 
         return jsonify({
             "text": text,
-            "saved_audio_path": final_audio_url
+            "saved_audio_path": saved_audio_path,
         }), 200
 
     except Exception as e:
@@ -2285,12 +2328,16 @@ def save_survey_responses(user_id, email):
                 "SELECT audio_file_path FROM survey_responses WHERE lower(user_email) = lower(%s)",
                 (email,),
             )
-            old_audio = {r[0] for r in c.fetchall() if r[0]}
+            old_audio = {audio_object_path(r[0]) for r in c.fetchall()} - {None}
             c.execute("DELETE FROM survey_responses WHERE lower(user_email) = lower(%s)", (email,))
 
+            kept = set()
             for r in responses:
                 question_key = r.get("question_key", "")
-                audio_file_path = r.get("audio_file_path")
+                # Only a recording of theirs, so nobody can attach (and on a
+                # retake, delete) someone else's.
+                audio_file_path = own_recording(user_id, r.get("audio_file_path"), old_audio)
+                kept.add(audio_file_path)
                 transcription = r.get("transcription")
                 structured = r.get("structured_answer")
                 structured_answer = json.dumps(structured) if structured else None
@@ -2302,12 +2349,10 @@ def save_survey_responses(user_id, email):
 
             conn.commit()
 
-        # Recordings from the old answers that the new ones don't reuse.
-        kept = {r.get("audio_file_path") for r in responses}
-        delete_from_storage(
-            AUDIO_BUCKET,
-            [storage_path_from_url(AUDIO_BUCKET, url) for url in old_audio - kept],
-        )
+        # Recordings the new answers don't use: the old answers', and takes
+        # they re-recorded along the way.
+        unused = (old_audio | set(list_storage_objects(AUDIO_BUCKET, recording_folder(user_id)))) - kept
+        delete_from_storage(AUDIO_BUCKET, list(unused))
         return jsonify({"status": "saved", "count": len(responses)}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500

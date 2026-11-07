@@ -16,7 +16,7 @@ meetup.
 ## How it works
 
 1. **Sign up / log in.** Accounts use Supabase Auth. The app sends the user's access token with every backend request.
-2. **Voice survey.** The user picks Senior or Companion, enters their age, and answers six spoken questions (bio, hobbies, how they like to meet, values, what they can teach, what they need help with). Each recording is transcribed with Groq Whisper.
+2. **Voice survey.** The user picks Senior or Companion, enters their age, and answers six spoken questions (bio, hobbies, how they like to meet, values, what they can teach, what they need help with). Each recording is transcribed with Groq Whisper and kept privately; the app never plays it back.
 3. **Profile extraction.** A Groq language model reads the transcripts and fills in the structured fields the matcher compares (interests, values, help needed or offered, availability, ...). If that call fails, a keyword-based fallback is used.
 4. **Profile summary.** The user sees what the app understood and can edit it.
 5. **Matches.** The backend scores everyone on the opposite side and returns the top 10, with at most two people from the same city near the top. The score comes from hand-set rules. A model trained on real accepted and declined requests is blended in (30%) only once there are enough of them and it ranks them better than the rules alone; see [Match model](#match-model).
@@ -143,7 +143,7 @@ Routes marked 🔒 need an `Authorization: Bearer <Supabase access token>` heade
 
 - **Web app:** Render static site at https://sandrapp-web.onrender.com, serving the Expo web build. It's built from `frontend/` with `npx expo export --platform web`, publishes `frontend/dist`, and rewrites all paths to `/index.html` so links like `/login` load directly. The `EXPO_PUBLIC_*` variables are set on the static site in Render, because they're baked into the build.
 - **Backend:** Render service `sandrappc-backend` (`backend/render.yaml`), deployed from the `master` branch and run with gunicorn. It's on the free tier, so it sleeps when idle and the first request after that can take about 50 seconds.
-- **Database and storage:** Supabase. Survey audio is stored in the public `survey-audio` bucket.
+- **Database and storage:** Supabase. Survey recordings are stored in the private `survey-audio` bucket, one folder per account (named by the Supabase Auth user id). Only the backend's service key can read them, and the backend sets the bucket back to private on startup if it was changed. Recordings are deleted when the person retakes the survey (any they no longer use) or deletes their account. Profile photos are in the public `profile-photos` bucket.
 - **Daily retrain:** needs a `RETRAIN_SECRET` repository secret in GitHub that matches the backend's `RETRAIN_SECRET`.
 - **App builds:** EAS profiles in `frontend/eas.json` (`development`, `preview` with test mode on, `production`).
 
