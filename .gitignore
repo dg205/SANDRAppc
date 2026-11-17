@@ -18,3 +18,7 @@ backend/candidates.db
 Thumbs.db
 .vscode/
 .idea/
+
+# Backend - match model, written by retrain.py when it beats the rules
+backend/trained_model.pkl
+backend/scaler.pkl
